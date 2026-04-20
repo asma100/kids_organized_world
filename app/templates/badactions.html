@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bad Actions – KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+        <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
+        <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
+        <a class="nav-item" href="{{ url_for('money') }}">My Money</a>
+      </div>
+      <div class="navbar-nav">
+        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+
+    <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
+      <h2 style="margin:0;">❌ Bad Actions</h2>
+      <span class="crosses-banner" style="margin:0;"><span class="icon">❌</span> {{ current_user.crosses }} Crosses</span>
+    </div>
+
+    <div class="two-col-layout">
+
+      <!-- LEFT: lists -->
+      <div>
+        <div class="section-card red-card">
+          <h3 class="section-title">📋 Actions List</h3>
+
+          {% if actions %}
+            {% for action in actions %}
+              <div class="action-item">
+                <div class="action-info">
+                  <strong>{{ action.name }}</strong>
+                  <span class="action-badge bad-badge">+{{ action.crosses_value }} ❌</span>
+                  {% if action.description %}<p class="action-desc">{{ action.description }}</p>{% endif %}
+                </div>
+                <div class="action-btns">
+                  <form method="POST" action="{{ url_for('assign_badaction', action_id=action.id) }}" style="margin:0;">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-danger"
+                            onclick="return confirm('Record this bad action?');">
+                      ❌ Record
+                    </button>
+                  </form>
+                  <a href="{{ url_for('edit_badaction', action_id=action.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                  <form method="POST" action="{{ url_for('delete_badaction', action_id=action.id) }}"
+                        style="margin:0;" onsubmit="return confirm('Delete?');">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-secondary">🗑</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="empty-msg">No bad actions defined yet. Create one! 👇</p>
+          {% endif %}
+        </div>
+
+        <!-- Punishments -->
+        <div class="section-card" style="margin-top:1.2rem; background:#fff0f0; border-color:#FF6B6B;">
+          <h3 class="section-title">⚠️ Punishments</h3>
+          {% if punishments %}
+            {% for p in punishments %}
+              <div class="action-item">
+                <div class="action-info">
+                  <strong>{{ p.name }}</strong>
+                  <span class="action-badge bad-badge">at {{ p.crosses_threshold }} ❌</span>
+                  {% if p.description %}<p class="action-desc">{{ p.description }}</p>{% endif %}
+                  {% if current_user.crosses >= p.crosses_threshold %}
+                    <span class="badge badge-danger">⚠️ Active!</span>
+                  {% endif %}
+                </div>
+                <div class="action-btns">
+                  <form method="POST" action="{{ url_for('delete_punishment_route', punishment_id=p.id) }}"
+                        style="margin:0;" onsubmit="return confirm('Remove?');">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-secondary">🗑</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="empty-msg">No punishments set yet.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- RIGHT: forms -->
+      <div>
+        <!-- Create bad action -->
+        <div class="section-card form-card" style="border-color:#FF6B6B;">
+          <h3 class="section-title">➕ New Bad Action</h3>
+          <form method="POST" action="{{ url_for('create_badaction') }}">
+            {{ form.hidden_tag() }}
+            <div class="form-group">
+              {{ form.name.label(class="form-control-label") }}
+              {{ form.name(class="form-control", placeholder="e.g. Did not do homework") }}
+            </div>
+            <div class="form-group">
+              {{ form.description.label(class="form-control-label") }}
+              {{ form.description(class="form-control", rows=2) }}
+            </div>
+            <div class="form-group">
+              {{ form.crosses_value.label(class="form-control-label") }}
+              {{ form.crosses_value(class="form-control", placeholder="e.g. 2") }}
+            </div>
+            {{ form.submit(class="btn btn-danger btn-block") }}
+          </form>
+        </div>
+
+        <!-- Quick-add predefined punishments -->
+        <div class="section-card" style="margin-top:1.2rem; background:#fff0f0; border-color:#FF6B6B;">
+          <h3 class="section-title">💡 Suggested Punishments</h3>
+          {% for p in predefined_punishments %}
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+              <span style="font-weight:700;">⚠️ {{ p.name }} — {{ p.crosses_threshold }} ❌</span>
+              <form method="POST" action="{{ url_for('create_punishment_route') }}" style="margin:0;">
+                {{ punishment_form.hidden_tag() }}
+                <input type="hidden" name="name" value="{{ p.name }}">
+                <input type="hidden" name="crosses_threshold" value="{{ p.crosses_threshold }}">
+                <input type="hidden" name="description" value="{{ p.description }}">
+                <button type="submit" class="btn btn-sm btn-warning">+ Add</button>
+              </form>
+            </div>
+          {% endfor %}
+        </div>
+
+        <!-- Custom punishment -->
+        <div class="section-card form-card" style="margin-top:1.2rem; border-color:#FF6B6B;">
+          <h3 class="section-title">⚠️ New Custom Punishment</h3>
+          <form method="POST" action="{{ url_for('create_punishment_route') }}">
+            {{ punishment_form.hidden_tag() }}
+            <div class="form-group">
+              {{ punishment_form.name.label(class="form-control-label") }}
+              {{ punishment_form.name(class="form-control", placeholder="e.g. No screen time") }}
+            </div>
+            <div class="form-group">
+              {{ punishment_form.description.label(class="form-control-label") }}
+              {{ punishment_form.description(class="form-control", rows=2) }}
+            </div>
+            <div class="form-group">
+              {{ punishment_form.crosses_threshold.label(class="form-control-label") }}
+              {{ punishment_form.crosses_threshold(class="form-control", placeholder="e.g. 5") }}
+            </div>
+            {{ punishment_form.submit(class="btn btn-warning btn-block") }}
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</body>
+</html>

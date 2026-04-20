@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Tasks – Kids Organized World</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">My Tasks</a>
+      </div>
+      <div class="navbar-nav">
+        {% if current_user.is_authenticated %}
+          <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+          <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
+          <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
+        {% endif %}
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <h2>📋 My Tasks</h2>
+
+    <!-- Points & crosses summary -->
+    <div>
+      <span class="points-banner">
+        <span class="icon">⭐</span> {{ current_user.points }} Points
+      </span>
+      <span class="crosses-banner">
+        <span class="icon">❌</span> {{ current_user.crosses }} Crosses
+      </span>
+    </div>
+
+    <a href="{{ url_for('createtask') }}" class="btn btn-success mb-3">+ New Task</a>
+
+    <div class="task-wbox">
+      {% if User_tasks_list %}
+        {% for task in User_tasks_list %}
+          <article class="content-section">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem;">
+              <div>
+                <h4>{{ task.title }}</h4>
+                <p class="text-muted">📅 {{ task.date.strftime('%Y-%m-%d') }} &nbsp;🕐 {{ task.time.strftime('%H:%M') }}</p>
+                <p style="margin-top:0.4rem;">{{ task.description }}</p>
+              </div>
+              <div>
+                {% if task.completion_status %}
+                  <span class="badge badge-success">✅ Done</span>
+                {% else %}
+                  <span class="badge badge-warning">⏳ Pending</span>
+                {% endif %}
+              </div>
+            </div>
+
+            <div style="margin-top:1rem; display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+
+              <!-- Toggle done/undone -->
+              <form method="POST" action="{{ url_for('toggle_task', task_id=task.task_id) }}" style="margin:0;">
+                {{ form.hidden_tag() }}
+                <button type="submit" class="btn btn-sm {{ 'btn-warning' if task.completion_status else 'btn-success' }}">
+                  {{ "↩ Mark Pending" if task.completion_status else "✔ Mark Done" }}
+                </button>
+              </form>
+
+              <!-- Edit -->
+              <a href="{{ url_for('updatetask', task_id=task.task_id) }}" class="btn btn-sm btn-primary">✏️ Edit</a>
+
+              <!-- Delete -->
+              <form method="POST" action="{{ url_for('deletetask', task_id=task.task_id) }}"
+                    style="margin:0;"
+                    onsubmit="return confirm('Delete this task?');">
+                {{ form.hidden_tag() }}
+                <button type="submit" class="btn btn-sm btn-danger">🗑 Delete</button>
+              </form>
+
+            </div>
+          </article>
+        {% endfor %}
+      {% else %}
+        <div class="content-section text-center">
+          <p style="font-size:1.2rem;">🎉 No tasks yet! <a href="{{ url_for('createtask') }}">Create your first one!</a></p>
+        </div>
+      {% endif %}
+    </div>
+
+  </main>
+</body>
+</html>

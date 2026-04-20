@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Good Actions – KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+        <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
+        <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
+        <a class="nav-item" href="{{ url_for('money') }}">My Money</a>
+      </div>
+      <div class="navbar-nav">
+        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+
+    <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
+      <h2 style="margin:0;">⭐ Good Actions</h2>
+      <span class="points-banner" style="margin:0;"><span class="icon">⭐</span> {{ current_user.points }} Points</span>
+    </div>
+
+    <div class="two-col-layout">
+
+      <!-- LEFT: action list -->
+      <div>
+        <div class="section-card green-card">
+          <h3 class="section-title">📋 Actions List</h3>
+
+          {% if actions %}
+            {% for action in actions %}
+              <div class="action-item">
+                <div class="action-info">
+                  <strong>{{ action.name }}</strong>
+                  <span class="action-badge good-badge">+{{ action.points_value }} pts</span>
+                  {% if action.description %}
+                    <p class="action-desc">{{ action.description }}</p>
+                  {% endif %}
+                </div>
+                <div class="action-btns">
+                  <!-- Award points to self -->
+                  <form method="POST" action="{{ url_for('award_goodaction', action_id=action.id) }}" style="margin:0;">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-success">✔ I did this!</button>
+                  </form>
+                  <a href="{{ url_for('edit_goodaction', action_id=action.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                  <form method="POST" action="{{ url_for('delete_goodaction', action_id=action.id) }}"
+                        style="margin:0;" onsubmit="return confirm('Delete this action?');">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-danger">🗑</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="empty-msg">No good actions yet. Create one below! 👇</p>
+          {% endif %}
+        </div>
+
+        <!-- Rewards list -->
+        <div class="section-card gold-card" style="margin-top:1.2rem;">
+          <h3 class="section-title">🏆 Rewards</h3>
+          {% if rewards %}
+            {% for reward in rewards %}
+              <div class="action-item">
+                <div class="action-info">
+                  <strong>{{ reward.name }}</strong>
+                  <span class="action-badge gold-badge">{{ reward.points_threshold }} pts needed</span>
+                  {% if reward.description %}<p class="action-desc">{{ reward.description }}</p>{% endif %}
+                  {% if current_user.points >= reward.points_threshold %}
+                    <span class="badge badge-success">🎉 Unlocked!</span>
+                  {% else %}
+                    <span style="font-size:0.8rem;color:#888;">
+                      {{ reward.points_threshold - current_user.points }} pts to go
+                    </span>
+                  {% endif %}
+                </div>
+                <div class="action-btns">
+                  <form method="POST" action="{{ url_for('delete_reward_route', reward_id=reward.id) }}"
+                        style="margin:0;" onsubmit="return confirm('Remove reward?');">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-danger">🗑</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="empty-msg">No rewards yet!</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- RIGHT: create forms -->
+      <div>
+        <!-- Create good action -->
+        <div class="section-card form-card">
+          <h3 class="section-title">✨ New Good Action</h3>
+          <form method="POST" action="{{ url_for('create_goodaction') }}">
+            {{ form.hidden_tag() }}
+            <div class="form-group">
+              {{ form.name.label(class="form-control-label") }}
+              {{ form.name(class="form-control", placeholder="e.g. Cleaned my room") }}
+            </div>
+            <div class="form-group">
+              {{ form.description.label(class="form-control-label") }}
+              {{ form.description(class="form-control", rows=2, placeholder="What does this action involve?") }}
+            </div>
+            <div class="form-group">
+              {{ form.points_value.label(class="form-control-label") }}
+              {{ form.points_value(class="form-control", placeholder="e.g. 5") }}
+            </div>
+            {{ form.submit(class="btn btn-success btn-block") }}
+          </form>
+        </div>
+
+        <!-- Predefined suggestions -->
+        <div class="section-card" style="margin-top:1.2rem; background:#fffbe6; border-color:#FFD93D;">
+          <h3 class="section-title">💡 Quick Add (Suggestions)</h3>
+          {% for p in predefined_rewards %}
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+              <span style="font-weight:700;">🏆 {{ p.name }} — {{ p.points_threshold }} pts</span>
+              <form method="POST" action="{{ url_for('create_reward_route') }}" style="margin:0;">
+                {{ reward_form.hidden_tag() }}
+                <input type="hidden" name="name" value="{{ p.name }}">
+                <input type="hidden" name="points_threshold" value="{{ p.points_threshold }}">
+                <input type="hidden" name="description" value="{{ p.description }}">
+                <button type="submit" class="btn btn-sm btn-warning">+ Add</button>
+              </form>
+            </div>
+          {% endfor %}
+        </div>
+
+        <!-- Create reward -->
+        <div class="section-card form-card" style="margin-top:1.2rem;">
+          <h3 class="section-title">🏆 New Custom Reward</h3>
+          <form method="POST" action="{{ url_for('create_reward_route') }}">
+            {{ reward_form.hidden_tag() }}
+            <div class="form-group">
+              {{ reward_form.name.label(class="form-control-label") }}
+              {{ reward_form.name(class="form-control", placeholder="e.g. Movie Night") }}
+            </div>
+            <div class="form-group">
+              {{ reward_form.description.label(class="form-control-label") }}
+              {{ reward_form.description(class="form-control", rows=2) }}
+            </div>
+            <div class="form-group">
+              {{ reward_form.points_threshold.label(class="form-control-label") }}
+              {{ reward_form.points_threshold(class="form-control", placeholder="e.g. 20") }}
+            </div>
+            {{ reward_form.submit(class="btn btn-warning btn-block") }}
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</body>
+</html>
