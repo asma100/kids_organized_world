@@ -7,3 +7,4 @@ Flask-Migrate>=4.0.4
 Flask-SQLAlchemy>=3.0.3
 python-dotenv>=1.0.0
 requests>=2.31.0
+gunicorn>=20.1.0
