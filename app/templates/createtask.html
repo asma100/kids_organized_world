@@ -3,71 +3,159 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Create Task</title>
+  <title>Create Task – KOW</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <style>
+    /* recurrence conditional panels */
+    .recurrence-panel { display: none; margin-top: 0.8rem; }
+    .recurrence-panel.active { display: block; }
+
+    .weekday-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.5rem;
+      margin-top: 0.4rem;
+    }
+    .weekday-label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--soft);
+      border: 2.5px solid var(--ink);
+      border-radius: var(--radius-sm);
+      padding: 0.4rem 0.6rem;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.85rem;
+      transition: all 0.12s ease;
+    }
+    .weekday-label input { accent-color: var(--grass); }
+    .weekday-label:has(input:checked) {
+      background: var(--grass);
+      border-color: var(--ink);
+      box-shadow: 2px 2px 0 var(--ink);
+    }
+    .recurrence-box {
+      background: #f0fbff;
+      border: 2.5px solid var(--sky);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      margin-top: 0.5rem;
+    }
+  </style>
 </head>
 <body>
   <header class="site-header">
     <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
       <div class="navbar-nav mr-auto">
         <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
       </div>
       <div class="navbar-nav">
-        {% if current_user.is_authenticated %}
-          <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
-        {% else %}
-          <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
-          <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
-        {% endif %}
+        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
       </div>
     </nav>
   </header>
 
   <main role="main" class="container">
-    <div class="row">
-      <div class="col-md-8">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
+    {% endwith %}
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }}">{{ message }}</div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
+    <h2>✏️ Create New Task</h2>
 
-        <div class="task-wbox">
-          <h2>Create New Task</h2>
-          <form method="POST" action="">
-            {{ form.hidden_tag() }}
+    <div class="section-card form-card" style="max-width:580px;">
+      <form method="POST" action="">
+        {{ form.hidden_tag() }}
 
-            <div class="form-group">
-              {{ form.title.label(class="form-control-label") }}
-              {{ form.title(class="form-control form-control-lg") }}
-            </div>
-
-            <div class="form-group">
-              {{ form.description.label(class="form-control-label") }}
-              {{ form.description(class="form-control form-control-lg") }}
-            </div>
-
-            <div class="form-group">
-              {{ form.date.label(class="form-control-label") }}
-              {{ form.date(class="form-control") }}
-            </div>
-
-            <div class="form-group">
-              {{ form.time.label(class="form-control-label") }}
-              {{ form.time(class="form-control") }}
-            </div>
-
-            <div class="form-group">
-              {{ form.submit(class="btn btn-primary btn-block") }}
-            </div>
-          </form>
+        <div class="form-group">
+          {{ form.title.label(class="form-control-label") }}
+          {{ form.title(class="form-control", placeholder="e.g. Brush teeth") }}
         </div>
 
-      </div>
+        <div class="form-group">
+          {{ form.description.label(class="form-control-label") }}
+          {{ form.description(class="form-control", rows=3, placeholder="What needs to be done?") }}
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+          <div class="form-group">
+            {{ form.date.label(class="form-control-label") }}
+            {{ form.date(class="form-control") }}
+          </div>
+          <div class="form-group">
+            {{ form.time.label(class="form-control-label") }}
+            {{ form.time(class="form-control") }}
+          </div>
+        </div>
+
+        <!-- ── RECURRENCE ── -->
+        <div class="form-group">
+          <label class="form-control-label">🔁 Repeat</label>
+          <select name="recurrence_type" id="recurrence_type" class="form-control"
+                  onchange="showRecurrencePanel(this.value)">
+            {% for value, label in form.recurrence_type.choices %}
+              <option value="{{ value }}" {% if form.recurrence_type.data == value %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Hourly panel -->
+        <div class="recurrence-box recurrence-panel" id="panel-hourly">
+          <label class="form-control-label">Every how many hours?</label>
+          {{ form.recurrence_hours(class="form-control", min=1, max=23, placeholder="e.g. 4") }}
+        </div>
+
+        <!-- Weekly panel -->
+        <div class="recurrence-box recurrence-panel" id="panel-weekly">
+          <label class="form-control-label">Which days of the week?</label>
+          <div class="weekday-grid">
+            {% for value, day_name in form.recurrence_days.choices %}
+              <label class="weekday-label">
+                <input type="checkbox" name="recurrence_days" value="{{ value }}"
+                  {% if value in (form.recurrence_days.data or []) %}checked{% endif %}>
+                {{ day_name[:3] }}
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- End date (shown for all recurring types) -->
+        <div class="recurrence-box recurrence-panel" id="panel-enddate">
+          <label class="form-control-label">⏹ Stop repeating on (optional)</label>
+          {{ form.recurrence_end(class="form-control") }}
+        </div>
+
+        <div class="form-group" style="margin-top:1.2rem;">
+          {{ form.submit(class="btn btn-success btn-block") }}
+        </div>
+      </form>
     </div>
   </main>
+
+  <script>
+    function showRecurrencePanel(type) {
+      // Hide all panels
+      document.querySelectorAll('.recurrence-panel').forEach(p => p.classList.remove('active'));
+
+      if (type === 'hourly') {
+        document.getElementById('panel-hourly').classList.add('active');
+        document.getElementById('panel-enddate').classList.add('active');
+      } else if (type === 'weekly') {
+        document.getElementById('panel-weekly').classList.add('active');
+        document.getElementById('panel-enddate').classList.add('active');
+      } else if (['daily', 'monthly', 'yearly'].includes(type)) {
+        document.getElementById('panel-enddate').classList.add('active');
+      }
+      // 'none' → all hidden
+    }
+    // Run on page load in case form has a pre-selected value
+    showRecurrencePanel(document.getElementById('recurrence_type').value);
+  </script>
 </body>
 </html>

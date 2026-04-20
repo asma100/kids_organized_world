@@ -1,3 +1,4 @@
+from datetime import date as date_type, timedelta, datetime
 from flask import render_template, url_for, flash, redirect, request
 from app import app, db, bcrypt
 from app.forms import (RegistrationForm, LoginForm, CreateTaskForm,
@@ -5,7 +6,8 @@ from app.forms import (RegistrationForm, LoginForm, CreateTaskForm,
                        RewardForm, PunishmentForm, AddMoneyForm,
                        SpendMoneyForm, SavingsGoalForm, SplitForm)
 from flask_login import login_user, current_user, logout_user, login_required
-from app.taskMangment import create_task, get_tasksList_for_user, update_task, delete_task
+from app.taskManagement import (create_task, get_tasks_for_date, update_task,
+                                delete_task, toggle_task_for_date, recurrence_label)
 from app.pointsys import total_task_points
 from app.models import User, Task, GoodAction, BadAction, Reward, Punishment
 from app.goodact import (create_good_action, get_good_actions, delete_good_action,
@@ -18,6 +20,14 @@ from app.moneyOrganizer import (get_or_create_account, add_money, spend_money,
                                 donate_money, set_category_percentages,
                                 create_savings_goal, get_savings_goals,
                                 get_transactions)
+
+
+def _parse_date(date_str):
+    """Parse a YYYY-MM-DD string; return today if invalid/missing."""
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return date_type.today()
 
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -76,8 +86,19 @@ def home():
 def createtask():
     form = CreateTaskForm()
     if form.validate_on_submit():
-        create_task(title=form.title.data, description=form.description.data,
-                    date=form.date.data, time=form.time.data)
+        # Build recurrence_days list from the multi-select (list of strings '0'..'6')
+        r_days = [int(d) for d in form.recurrence_days.data] if form.recurrence_days.data else None
+
+        create_task(
+            title=form.title.data,
+            description=form.description.data,
+            date=form.date.data,
+            time=form.time.data,
+            recurrence_type=form.recurrence_type.data,
+            recurrence_hours=form.recurrence_hours.data,
+            recurrence_days=r_days,
+            recurrence_end=form.recurrence_end.data,
+        )
         flash('Task created! ✅', 'success')
         return redirect(url_for('taskList'))
     return render_template("createtask.html", form=form)
@@ -86,11 +107,29 @@ def createtask():
 @app.route("/taskList")
 @login_required
 def taskList():
-    user_tasks_list = get_tasksList_for_user()
+    # Date navigation: ?date=YYYY-MM-DD, defaults to today
+    date_str = request.args.get('date')
+    viewed_date = _parse_date(date_str)
+
+    prev_date = viewed_date - timedelta(days=1)
+    next_date = viewed_date + timedelta(days=1)
+    today = date_type.today()
+    is_today = (viewed_date == today)
+
+    task_items = get_tasks_for_date(viewed_date)
+
+    # A plain form just for CSRF tokens in toggle/delete sub-forms
     form = UpdateTaskForm()
-    return render_template("taskList.html", title='Task List',
-                           User_tasks_list=user_tasks_list,
-                           user=current_user, form=form)
+
+    return render_template("taskList.html",
+                           task_items=task_items,
+                           viewed_date=viewed_date,
+                           prev_date=prev_date,
+                           next_date=next_date,
+                           today=today,
+                           is_today=is_today,
+                           form=form,
+                           recurrence_label=recurrence_label)
 
 
 @app.route("/updatetask/<int:task_id>", methods=["GET", "POST"])
@@ -100,39 +139,60 @@ def updatetask(task_id):
     if task.user_id != current_user.id:
         flash('Not authorized.', 'danger')
         return redirect(url_for('taskList'))
+
     form = UpdateTaskForm()
     if form.validate_on_submit():
-        update_task(task_id=task_id,
-                    title=form.title.data or None,
-                    description=form.description.data or None,
-                    completion_status=form.completion_status.data)
+        r_days = [int(d) for d in form.recurrence_days.data] if form.recurrence_days.data else None
+        update_task(
+            task_id=task_id,
+            title=form.title.data or None,
+            description=form.description.data or None,
+            completion_status=form.completion_status.data,
+            recurrence_type=form.recurrence_type.data,
+            recurrence_hours=form.recurrence_hours.data,
+            recurrence_days=r_days,
+            recurrence_end=form.recurrence_end.data,
+        )
         flash('Task updated!', 'success')
         return redirect(url_for('taskList'))
+
+    # Pre-fill
     form.title.data = task.title
     form.description.data = task.description
     form.completion_status.data = task.completion_status
-    return render_template("taskupdate.html", form=form, task=task)
+    form.recurrence_type.data = task.recurrence_type
+    form.recurrence_hours.data = task.recurrence_hours
+    form.recurrence_days.data = [str(d) for d in task.recurrence_days_list()]
+    if task.recurrence_end:
+        form.recurrence_end.data = task.recurrence_end.date() if hasattr(task.recurrence_end, 'date') else task.recurrence_end
+
+    return render_template("taskupdate.html", form=form, task=task,
+                           recurrence_label=recurrence_label)
 
 
 @app.route("/deletetask/<int:task_id>", methods=["POST"])
 @login_required
 def deletetask(task_id):
+    # Pass date back so we stay on the same day after deleting
+    date_str = request.form.get('date', '')
     success = delete_task(task_id)
     flash('Task deleted.' if success else 'Not found.', 'success' if success else 'danger')
-    return redirect(url_for('taskList'))
+    return redirect(url_for('taskList', date=date_str))
 
 
 @app.route("/toggle_task/<int:task_id>", methods=["POST"])
 @login_required
 def toggle_task(task_id):
-    t = Task.query.get_or_404(task_id)
-    if t.user_id != current_user.id:
+    date_str = request.form.get('date', '')
+    target_date = _parse_date(date_str)
+
+    new_state = toggle_task_for_date(task_id, target_date)
+    if new_state is None:
         flash("Unauthorized.", "danger")
-        return redirect(url_for('taskList'))
-    t.completion_status = not t.completion_status
-    db.session.commit()
-    total_task_points(current_user.id)
-    return redirect(url_for('taskList'))
+    else:
+        total_task_points(current_user.id)
+
+    return redirect(url_for('taskList', date=date_str))
 
 
 # ── GOOD ACTIONS ──────────────────────────────────────────────────────────────
@@ -181,9 +241,7 @@ def edit_goodaction(action_id):
     form.name.data = action.name
     form.description.data = action.description
     form.points_value.data = action.points_value
-    return render_template("edit_action.html", form=form, action=action,
-                           mode='good', field_label='Points Value',
-                           field_name='points_value')
+    return render_template("edit_action.html", form=form, action=action, mode='good')
 
 
 @app.route("/goodactions/delete/<int:action_id>", methods=["POST"])
@@ -270,9 +328,7 @@ def edit_badaction(action_id):
     form.name.data = action.name
     form.description.data = action.description
     form.crosses_value.data = action.crosses_value
-    return render_template("edit_action.html", form=form, action=action,
-                           mode='bad', field_label='Crosses Value',
-                           field_name='crosses_value')
+    return render_template("edit_action.html", form=form, action=action, mode='bad')
 
 
 @app.route("/badactions/delete/<int:action_id>", methods=["POST"])
@@ -354,10 +410,8 @@ def money_spend():
     form = SpendMoneyForm()
     if form.validate_on_submit():
         account = spend_money(current_user.id, form.amount.data, form.note.data or "")
-        if account:
-            flash(f'🛍 Spent {form.amount.data:.2f}!', 'success')
-        else:
-            flash("Not enough spending money!", 'danger')
+        flash(f'🛍 Spent {form.amount.data:.2f}!' if account else "Not enough spending money!", 
+              'success' if account else 'danger')
     return redirect(url_for('money'))
 
 
@@ -367,10 +421,8 @@ def money_donate():
     form = SpendMoneyForm()
     if form.validate_on_submit():
         account = donate_money(current_user.id, form.amount.data, form.note.data or "")
-        if account:
-            flash(f'❤️ Donated {form.amount.data:.2f}!', 'success')
-        else:
-            flash("Not enough donation money!", 'danger')
+        flash(f'❤️ Donated {form.amount.data:.2f}!' if account else "Not enough donation money!",
+              'success' if account else 'danger')
     return redirect(url_for('money'))
 
 

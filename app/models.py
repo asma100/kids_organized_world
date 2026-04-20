@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date as date_type
 from app import db, login_manager
 from flask_login import UserMixin
 
@@ -33,14 +33,112 @@ class Task(db.Model):
 
     task_id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text, nullable=False)
+    description = db.Column(db.Text, nullable=False, default="-")
+
+    # The start date of the task (for recurring tasks, this is the first occurrence)
     date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     time = db.Column(db.Time, nullable=False)
+
+    # For non-recurring tasks only — tracked directly on the task
     completion_status = db.Column(db.Boolean, nullable=False, default=False)
+
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
+    # ── Recurrence ────────────────────────────────────────────────────────────
+    # recurrence_type values:
+    #   'none'    — one-time task (default)
+    #   'daily'   — repeats every day
+    #   'hourly'  — repeats every N hours (see recurrence_hours)
+    #   'weekly'  — repeats on specific days of the week (see recurrence_days)
+    #   'monthly' — repeats on the same day of the month
+    #   'yearly'  — repeats on the same date each year
+    recurrence_type = db.Column(db.String(20), nullable=False, default='none')
+
+    # For 'hourly': repeat every this many hours (e.g. 4 → every 4 hours)
+    recurrence_hours = db.Column(db.Integer, nullable=True)
+
+    # For 'weekly': comma-separated weekday numbers 0=Mon … 6=Sun
+    # e.g. "0,2,4" means Mon, Wed, Fri
+    recurrence_days = db.Column(db.String(20), nullable=True)
+
+    # Optional end date — recurrence stops after this date (NULL = forever)
+    recurrence_end = db.Column(db.DateTime, nullable=True)
+
+    # Individual completion records for recurring tasks
+    occurrences = db.relationship('TaskOccurrence', backref='task', lazy=True,
+                                  cascade='all, delete-orphan')
+
+    def is_recurring(self):
+        return self.recurrence_type != 'none'
+
+    def recurrence_days_list(self):
+        """Returns list of int weekday numbers, e.g. [0, 2, 4]"""
+        if self.recurrence_days:
+            return [int(d) for d in self.recurrence_days.split(',') if d.strip()]
+        return []
+
+    def occurs_on(self, check_date):
+        """
+        Returns True if this task should appear on check_date.
+        check_date is a datetime.date object.
+        """
+        task_start = self.date.date() if hasattr(self.date, 'date') else self.date
+
+        # Task hasn't started yet
+        if check_date < task_start:
+            return False
+
+        # Past recurrence end date
+        if self.recurrence_end:
+            end = self.recurrence_end.date() if hasattr(self.recurrence_end, 'date') else self.recurrence_end
+            if check_date > end:
+                return False
+
+        if self.recurrence_type == 'none':
+            return check_date == task_start
+
+        elif self.recurrence_type == 'daily':
+            return True
+
+        elif self.recurrence_type == 'hourly':
+            # Hourly tasks appear every day from start date onwards
+            return True
+
+        elif self.recurrence_type == 'weekly':
+            return check_date.weekday() in self.recurrence_days_list()
+
+        elif self.recurrence_type == 'monthly':
+            return check_date.day == task_start.day
+
+        elif self.recurrence_type == 'yearly':
+            return (check_date.month == task_start.month and
+                    check_date.day == task_start.day)
+
+        return False
+
     def __repr__(self):
-        return f"Task('{self.title}', done={self.completion_status})"
+        return f"Task('{self.title}', recurrence='{self.recurrence_type}')"
+
+
+class TaskOccurrence(db.Model):
+    """
+    Tracks completion of a specific instance of a recurring task on a specific date.
+    For non-recurring tasks, completion_status on Task itself is used.
+    """
+    __tablename__ = 'task_occurrence'
+
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('task.task_id'), nullable=False)
+    # The date this occurrence is for (date only, not datetime)
+    occurrence_date = db.Column(db.Date, nullable=False)
+    completed = db.Column(db.Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('task_id', 'occurrence_date', name='uq_task_occurrence'),
+    )
+
+    def __repr__(self):
+        return f"TaskOccurrence(task={self.task_id}, date={self.occurrence_date}, done={self.completed})"
 
 
 # ── Good Actions ──────────────────────────────────────────────────────────────
@@ -131,7 +229,7 @@ class MoneyTransaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
-    transaction_type = db.Column(db.String(20), nullable=False)  # 'income','expense','donation'
+    transaction_type = db.Column(db.String(20), nullable=False)
     note = db.Column(db.String(255), default="")
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 

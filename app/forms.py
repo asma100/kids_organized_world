@@ -1,7 +1,9 @@
 from flask_wtf import FlaskForm
 from wtforms import (StringField, PasswordField, SubmitField, BooleanField,
-                     DateField, TimeField, IntegerField, FloatField, TextAreaField)
-from wtforms.validators import DataRequired, Length, Email, EqualTo, ValidationError, Optional, NumberRange
+                     DateField, TimeField, IntegerField, FloatField,
+                     TextAreaField, SelectField, SelectMultipleField)
+from wtforms.validators import (DataRequired, Length, Email, EqualTo,
+                                ValidationError, Optional, NumberRange)
 from app.models import User
 
 
@@ -29,18 +31,67 @@ class LoginForm(FlaskForm):
     submit = SubmitField('Login')
 
 
+RECURRENCE_CHOICES = [
+    ('none',    '📅 No repeat (one-time)'),
+    ('daily',   '🔁 Every day'),
+    ('hourly',  '🔁 Every N hours'),
+    ('weekly',  '🔁 Specific days of the week'),
+    ('monthly', '🔁 Every month (same date)'),
+    ('yearly',  '🔁 Every year (same date)'),
+]
+
+WEEKDAY_CHOICES = [
+    ('0', 'Monday'),
+    ('1', 'Tuesday'),
+    ('2', 'Wednesday'),
+    ('3', 'Thursday'),
+    ('4', 'Friday'),
+    ('5', 'Saturday'),
+    ('6', 'Sunday'),
+]
+
+
 class CreateTaskForm(FlaskForm):
     title = StringField('Title', validators=[DataRequired()])
-    description = StringField('Description', validators=[DataRequired()])
-    date = DateField('Date', validators=[DataRequired()])
+    description = TextAreaField('Description')
+    date = DateField('Start Date', validators=[DataRequired()])
     time = TimeField('Time', validators=[DataRequired()])
+
+    # Recurrence
+    recurrence_type = SelectField('Repeat', choices=RECURRENCE_CHOICES, default='none')
+    recurrence_hours = IntegerField(
+        'Every how many hours?',
+        validators=[Optional(), NumberRange(min=1, max=23)],
+        default=1
+    )
+    recurrence_days = SelectMultipleField(
+        'Which days of the week?',
+        choices=WEEKDAY_CHOICES,
+        validators=[Optional()]
+    )
+    recurrence_end = DateField('Stop repeating on (optional)', validators=[Optional()])
+
     submit = SubmitField('Create Task')
 
 
 class UpdateTaskForm(FlaskForm):
     title = StringField('Title', validators=[Optional()])
-    description = StringField('Description', validators=[Optional()])
+    description = TextAreaField('Description', validators=[Optional()])
     completion_status = BooleanField('Completed')
+
+    recurrence_type = SelectField('Repeat', choices=RECURRENCE_CHOICES, default='none')
+    recurrence_hours = IntegerField(
+        'Every how many hours?',
+        validators=[Optional(), NumberRange(min=1, max=23)],
+        default=1
+    )
+    recurrence_days = SelectMultipleField(
+        'Which days of the week?',
+        choices=WEEKDAY_CHOICES,
+        validators=[Optional()]
+    )
+    recurrence_end = DateField('Stop repeating on (optional)', validators=[Optional()])
+
     submit = SubmitField('Update Task')
 
 

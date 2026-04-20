@@ -3,8 +3,51 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Tasks – Kids Organized World</title>
+  <title>My Tasks – KOW</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <style>
+    /* ── date navigator ── */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .date-nav-label {
+      font-family: 'Fredoka One', cursive;
+      font-size: 1.6rem;
+      color: var(--ink);
+      flex: 1;
+      text-align: center;
+    }
+    .date-nav-label.today-label { color: var(--coral); }
+    .date-nav-sub {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #888;
+      display: block;
+      text-align: center;
+    }
+    .today-btn {
+      font-size: 0.8rem;
+      padding: 0.3rem 0.8rem;
+    }
+
+    /* ── task progress bar ── */
+    .day-progress {
+      margin-bottom: 1.2rem;
+    }
+    .day-progress-label {
+      font-weight: 800;
+      margin-bottom: 0.3rem;
+      font-size: 0.9rem;
+    }
+
+    /* ── completed task style ── */
+    .task-done h4 { text-decoration: line-through; opacity: 0.55; }
+    .task-done { opacity: 0.75; }
+  </style>
 </head>
 <body>
   <header class="site-header">
@@ -12,55 +55,90 @@
       <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
       <div class="navbar-nav mr-auto">
         <a class="nav-item" href="{{ url_for('home') }}">Home</a>
-        <a class="nav-item" href="{{ url_for('taskList') }}">My Tasks</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+        <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
+        <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
+        <a class="nav-item" href="{{ url_for('money') }}">My Money</a>
       </div>
       <div class="navbar-nav">
-        {% if current_user.is_authenticated %}
-          <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
-        {% else %}
-          <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
-          <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
-        {% endif %}
+        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
       </div>
     </nav>
   </header>
 
   <main role="main" class="container">
-
     {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
     {% endwith %}
 
-    <h2>📋 My Tasks</h2>
-
-    <!-- Points & crosses summary -->
-    <div>
-      <span class="points-banner">
-        <span class="icon">⭐</span> {{ current_user.points }} Points
-      </span>
-      <span class="crosses-banner">
-        <span class="icon">❌</span> {{ current_user.crosses }} Crosses
-      </span>
+    <!-- Score row -->
+    <div style="margin-bottom:1rem;">
+      <span class="points-banner"><span class="icon">⭐</span> {{ current_user.points }} Points</span>
+      <span class="crosses-banner"><span class="icon">❌</span> {{ current_user.crosses }} Crosses</span>
     </div>
+
+    <!-- ── Date Navigator ── -->
+    <div class="date-nav">
+      <a href="{{ url_for('taskList', date=prev_date.strftime('%Y-%m-%d')) }}"
+         class="btn btn-secondary">◀ Prev</a>
+
+      <div class="date-nav-label {{ 'today-label' if is_today else '' }}">
+  {% if is_today %}
+    📅 Today
+  {% elif timedelta is defined and viewed_date == today - timedelta(days=1) %}
+    Yesterday
+  {% else %}
+    {{ viewed_date.strftime('%A') }}
+  {% endif %}
+  <span class="date-nav-sub">{{ viewed_date.strftime('%d %B %Y') }}</span>
+</div>
+
+      <a href="{{ url_for('taskList', date=next_date.strftime('%Y-%m-%d')) }}"
+         class="btn btn-secondary">Next ▶</a>
+
+      {% if not is_today %}
+        <a href="{{ url_for('taskList') }}" class="btn btn-warning today-btn">Go to Today</a>
+      {% endif %}
+    </div>
+
+    <!-- Progress bar for the day -->
+    {% set total = task_items|length %}
+    {% set done = task_items|selectattr('completed')|list|length %}
+    {% if total > 0 %}
+      <div class="day-progress">
+        <div class="day-progress-label">{{ done }} / {{ total }} tasks done</div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width: {{ ((done / total) * 100)|int }}%;
+               background: {{ 'var(--grass)' if done == total else 'var(--sky)' }};"></div>
+        </div>
+      </div>
+    {% endif %}
 
     <a href="{{ url_for('createtask') }}" class="btn btn-success mb-3">+ New Task</a>
 
+    <!-- ── Task List ── -->
     <div class="task-wbox">
-      {% if User_tasks_list %}
-        {% for task in User_tasks_list %}
-          <article class="content-section">
+      {% if task_items %}
+        {% for item in task_items %}
+          {% set task = item.task %}
+          {% set completed = item.completed %}
+          <article class="content-section {{ 'task-done' if completed else '' }}">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem;">
               <div>
                 <h4>{{ task.title }}</h4>
-                <p class="text-muted">📅 {{ task.date.strftime('%Y-%m-%d') }} &nbsp;🕐 {{ task.time.strftime('%H:%M') }}</p>
-                <p style="margin-top:0.4rem;">{{ task.description }}</p>
+                <p class="text-muted">
+                  🕐 {{ task.time.strftime('%H:%M') }}
+                  &nbsp;·&nbsp;
+                  <span style="font-size:0.82rem; font-weight:700;">
+                    {{ recurrence_label(task) }}
+                  </span>
+                </p>
+                <p style="margin-top:0.3rem;">{{ task.description }}</p>
               </div>
               <div>
-                {% if task.completion_status %}
+                {% if completed %}
                   <span class="badge badge-success">✅ Done</span>
                 {% else %}
                   <span class="badge badge-warning">⏳ Pending</span>
@@ -68,24 +146,31 @@
               </div>
             </div>
 
-            <div style="margin-top:1rem; display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+            <div style="margin-top:0.8rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
 
-              <!-- Toggle done/undone -->
-              <form method="POST" action="{{ url_for('toggle_task', task_id=task.task_id) }}" style="margin:0;">
+              <!-- Toggle: passes current date so recurring tasks toggle the right occurrence -->
+              <form method="POST"
+                    action="{{ url_for('toggle_task', task_id=task.task_id) }}"
+                    style="margin:0;">
                 {{ form.hidden_tag() }}
-                <button type="submit" class="btn btn-sm {{ 'btn-warning' if task.completion_status else 'btn-success' }}">
-                  {{ "↩ Mark Pending" if task.completion_status else "✔ Mark Done" }}
+                <input type="hidden" name="date" value="{{ viewed_date.strftime('%Y-%m-%d') }}">
+                <button type="submit"
+                        class="btn btn-sm {{ 'btn-warning' if completed else 'btn-success' }}">
+                  {{ '↩ Undo' if completed else '✔ Done!' }}
                 </button>
               </form>
 
-              <!-- Edit -->
-              <a href="{{ url_for('updatetask', task_id=task.task_id) }}" class="btn btn-sm btn-primary">✏️ Edit</a>
+              <!-- Edit (goes to full edit page) -->
+              <a href="{{ url_for('updatetask', task_id=task.task_id) }}"
+                 class="btn btn-sm btn-primary">✏️ Edit</a>
 
               <!-- Delete -->
-              <form method="POST" action="{{ url_for('deletetask', task_id=task.task_id) }}"
+              <form method="POST"
+                    action="{{ url_for('deletetask', task_id=task.task_id) }}"
                     style="margin:0;"
-                    onsubmit="return confirm('Delete this task?');">
+                    onsubmit="return confirm('Delete {{ task.title }}?{% if task.is_recurring() %} This will remove ALL occurrences!{% endif %}');">
                 {{ form.hidden_tag() }}
+                <input type="hidden" name="date" value="{{ viewed_date.strftime('%Y-%m-%d') }}">
                 <button type="submit" class="btn btn-sm btn-danger">🗑 Delete</button>
               </form>
 
@@ -94,7 +179,13 @@
         {% endfor %}
       {% else %}
         <div class="content-section text-center">
-          <p style="font-size:1.2rem;">🎉 No tasks yet! <a href="{{ url_for('createtask') }}">Create your first one!</a></p>
+          {% if is_today %}
+            <p style="font-size:1.1rem;">🎉 No tasks today!
+              <a href="{{ url_for('createtask') }}">Create one?</a>
+            </p>
+          {% else %}
+            <p style="font-size:1.1rem;">📭 No tasks on {{ viewed_date.strftime('%d %B %Y') }}.</p>
+          {% endif %}
         </div>
       {% endif %}
     </div>
