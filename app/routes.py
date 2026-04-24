@@ -22,6 +22,14 @@ from app.moneyOrganizer import (get_or_create_account, add_money, spend_money,
                                 get_transactions)
 
 
+
+import io
+from flask import send_file
+from app.omr_pdf import generate_task_sheet
+from app.omr_scanner import process_scanned_sheet
+
+
+
 def _parse_date(date_str):
     """Parse a YYYY-MM-DD string; return today if invalid/missing."""
     try:
@@ -132,6 +140,7 @@ def taskList():
                            recurrence_label=recurrence_label)
 
 
+
 @app.route("/updatetask/<int:task_id>", methods=["GET", "POST"])
 @login_required
 def updatetask(task_id):
@@ -193,6 +202,65 @@ def toggle_task(task_id):
         total_task_points(current_user.id)
 
     return redirect(url_for('taskList', date=date_str))
+
+
+
+@app.route("/taskList/print")
+@login_required
+def print_task_sheet():
+    """
+    Generate and download a printable OMR PDF for the currently viewed date.
+    URL: /taskList/print?date=YYYY-MM-DD
+    """
+    date_str    = request.args.get('date', '')
+    viewed_date = _parse_date(date_str)          # reuse helper already in routes.py
+    task_items  = get_tasks_for_date(viewed_date)
+ 
+    if not task_items:
+        flash("No tasks on this date — nothing to print.", "warning")
+        return redirect(url_for('taskList', date=date_str))
+ 
+    pdf_bytes, sheet = generate_task_sheet(task_items, viewed_date, current_user)
+ 
+    filename = f"tasks_{viewed_date.strftime('%Y-%m-%d')}_{current_user.username}.pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename
+    )
+ 
+ 
+@app.route("/scan", methods=["GET", "POST"])
+@login_required
+def scan_sheet():
+    """
+    GET  → show the upload form
+    POST → receive the scanned image, run OMR, update tasks, show results
+    """
+    if request.method == "POST":
+        if 'sheet_image' not in request.files:
+            flash("No file uploaded.", "danger")
+            return redirect(url_for('scan_sheet'))
+ 
+        file = request.files['sheet_image']
+        if file.filename == '':
+            flash("No file selected.", "danger")
+            return redirect(url_for('scan_sheet'))
+ 
+        allowed = {'png', 'jpg', 'jpeg', 'webp', 'bmp', 'tiff', 'tif'}
+        ext = file.filename.rsplit('.', 1)[-1].lower()
+        if ext not in allowed:
+            flash(f"Unsupported file type '.{ext}'. Upload a photo or scan (JPG/PNG).", "danger")
+            return redirect(url_for('scan_sheet'))
+ 
+        image_bytes = file.read()
+        result = process_scanned_sheet(image_bytes, current_user)
+ 
+        return render_template("scan_result.html", result=result)
+ 
+    # GET — show upload form
+    return render_template("scan_upload.html")
 
 
 # ── GOOD ACTIONS ──────────────────────────────────────────────────────────────
@@ -450,3 +518,34 @@ def money_goal():
                             form.reward_description.data or "")
         flash(f'🎯 Goal "{form.name.data}" set!', 'success')
     return redirect(url_for('money'))
+
+import base64
+ 
+ 
+@app.route("/scan/debug", methods=["GET", "POST"])
+@login_required
+def scan_debug():
+    """
+    Developer diagnostic page.
+    Uploads an image, runs the full detection pipeline, shows annotated result.
+    Does NOT modify any task data.
+    """
+    from app.omr_scanner import debug_scan_image, DARK_FRACTION_REQUIRED
+    info = None
+ 
+    if request.method == "POST" and 'sheet_image' in request.files:
+        image_bytes = request.files['sheet_image'].read()
+        raw_info    = debug_scan_image(image_bytes, current_user)
+ 
+        # Convert annotated JPEG bytes → base64 string for inline <img src>
+        if raw_info.get('annotated_jpeg'):
+            raw_info['annotated_jpeg_b64'] = base64.b64encode(
+                raw_info['annotated_jpeg']
+            ).decode('utf-8')
+        else:
+            raw_info['annotated_jpeg_b64'] = None
+ 
+        raw_info['threshold'] = DARK_FRACTION_REQUIRED
+        info = raw_info
+ 
+    return render_template("scan_debug.html", info=info)

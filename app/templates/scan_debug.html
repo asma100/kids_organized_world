@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan Debug – KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <style>
+    .mono {
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.2rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.7;
+    }
+    .ok-line   { color: #a6e3a1; }
+    .err-line  { color: #f38ba8; }
+    .info-line { color: #89b4fa; }
+    .annotated-wrap {
+      border: var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-lg);
+      max-width: 100%;
+    }
+    .annotated-wrap img { width: 100%; display: block; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+    th, td { border: 2px solid #ddd; padding: 0.5rem 0.8rem; text-align:left; }
+    th { background: var(--soft); font-weight: 800; }
+    tr.filled-row  td:first-child { color: #2d7a2d; font-weight: 800; }
+    tr.empty-row   td:first-child { color: #cc3333; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('scan_sheet') }}">← Back to Scan</a>
+      </div>
+      <div class="navbar-nav">
+        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+    <h2>🔬 Scan Diagnostics</h2>
+    <p style="color:#666; margin-bottom:1.5rem;">
+      Upload your image to see exactly what the scanner detects —
+      <strong>no tasks are changed.</strong>
+    </p>
+
+    <div class="section-card form-card" style="max-width:500px; margin-bottom:1.5rem;">
+      <form method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+          <label class="form-control-label">Upload your scanned/screenshot image</label>
+          <input type="file" name="sheet_image" class="form-control"
+                 accept="image/*" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">🔍 Analyse</button>
+      </form>
+    </div>
+
+    {% if info %}
+
+      <!-- Annotated image -->
+      {% if info.annotated_jpeg_b64 %}
+        <div class="section-card" style="margin-bottom:1.5rem;">
+          <h3 class="section-title">
+            🖼 Annotated Image
+            <span style="font-size:0.8rem; font-weight:600; color:#666;">
+              — 🟢 = detected filled &nbsp;|&nbsp; 🔴 = detected empty
+              &nbsp;|&nbsp; number = dark/color fraction
+            </span>
+          </h3>
+          <div class="annotated-wrap">
+            <img src="data:image/jpeg;base64,{{ info.annotated_jpeg_b64 }}"
+                 alt="Annotated scan">
+          </div>
+          <p style="font-size:0.8rem; color:#888; margin-top:0.5rem;">
+            Threshold is {{ info.threshold }}. Any fraction ≥ threshold = filled.
+          </p>
+        </div>
+      {% endif %}
+
+      <!-- Per-checkbox table -->
+      {% if info.checkbox_results %}
+        <div class="section-card" style="margin-bottom:1.5rem;">
+          <h3 class="section-title">📋 Checkbox Results</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Result</th>
+                <th>Task</th>
+                <th>Position (cx, cy)</th>
+                <th>Fraction</th>
+                <th>Threshold</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for cb in info.checkbox_results %}
+                <tr class="{{ 'filled-row' if cb.filled else 'empty-row' }}">
+                  <td>{{ '✅ FILLED' if cb.filled else '⬜ EMPTY' }}</td>
+                  <td>{{ cb.title }}</td>
+                  <td>({{ cb.cx }}, {{ cb.cy }})</td>
+                  <td>
+                    <strong>{{ cb.fraction }}</strong>
+                    {% if cb.fraction > 0 and not cb.filled %}
+                      <span style="color:#e67e22; font-size:0.8rem;">
+                        ← close! lower threshold?
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td>{{ info.threshold }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+      <!-- Pipeline log -->
+      <div class="section-card" style="background:#1e1e2e; margin-bottom:1rem;">
+        <div class="mono"><span class="info-line">── Image ─────────────────────────────────────</span>
+Size: {{ info.image_size }}
+
+<span class="info-line">── QR Code ────────────────────────────────────</span>
+Found:  <span class="{{ 'ok-line' if info.qr_found else 'err-line' }}">{{ info.qr_found }}</span>{% if info.qr_uuid %}
+UUID:   <span class="ok-line">{{ info.qr_uuid }}</span>{% endif %}
+{% for line in info.qr_debug %}<span class="{{ 'ok-line' if '✓' in line else ('err-line' if '✗' in line else 'info-line') }}">{{ line }}</span>
+{% endfor %}
+<span class="info-line">── Corner Markers & Warp ───────────────────────</span>
+{% for line in info.warp_debug %}<span class="{{ 'ok-line' if '✓' in line else ('err-line' if '✗' in line else 'info-line') }}">{{ line }}</span>
+{% endfor %}</div>
+      </div>
+
+      <!-- Advice panels -->
+      {% if info.checkbox_results and info.checkbox_results | selectattr('filled', 'equalto', False) | list | length == info.checkbox_results | length %}
+        <div class="section-card red-card">
+          <h3 class="section-title">💡 All Checkboxes Detected as Empty — Fix Guide</h3>
+          <p style="margin-bottom:0.8rem;">
+            Check the annotated image above. If the circles are in the wrong place,
+            the warp failed — try a cleaner photo with all 4 corner markers visible.
+            If the circles ARE on the filled boxes but still red, adjust the threshold.
+          </p>
+          <p style="margin-bottom:0.5rem; font-weight:700;">
+            Current threshold: {{ info.threshold }}
+            &nbsp;(fraction of dark/colorful pixels needed to count as filled)
+          </p>
+          <p>
+            In <code>omr_scanner.py</code>, lower <code>DARK_FRACTION_REQUIRED</code>:
+          </p>
+          <div class="mono" style="margin-top:0.5rem;">DARK_FRACTION_REQUIRED = 0.08   # try 0.05 for very light marks</div>
+          <p style="margin-top:0.8rem;">
+            Also raise <code>GRAY_DARK_THRESHOLD</code> if you used a light color:
+          </p>
+          <div class="mono">GRAY_DARK_THRESHOLD = 220   # catches light grey / light colors</div>
+        </div>
+      {% endif %}
+
+    {% endif %}
+  </main>
+</body>
+</html>

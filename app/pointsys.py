@@ -1,29 +1,50 @@
-#each task done on time will give the child one point
-#if the task is done but not on time the child will get no points
-#if there is more than threeshold of not doing the task on time the child will get a cross 
-#if there is a good action the child will get a number of points based on how the list is set up
-#if there is a bad action the child will get a number of cross based on how the list is set up
+"""
+pointsys.py
+───────────
+Recalculates a user's points based on ALL completed tasks:
+  - One-time tasks  → Task.completion_status == True
+  - Recurring tasks → TaskOccurrence.completed == True (each occurrence counts)
 
-import datetime
+Call total_task_points(user_id) any time tasks are toggled — from the
+web toggle route AND from the OMR scanner after processing a sheet.
+"""
 
-from app.models import User, Task
+from app.models import User, Task, TaskOccurrence
 from app import db
-from flask_login import current_user
-
-from sqlalchemy import func
-
-
 
 
 def total_task_points(user_id):
-    # Count only completed tasks directly in the database
-    completed_count = db.session.query(Task).filter_by(
-        user_id=user_id, 
+    """
+    Recount and save a user's points from scratch.
+
+    Points are awarded as:
+      +1 per completed one-time task
+      +1 per completed recurring task occurrence
+    """
+    user = User.query.get(user_id)
+    if not user:
+        return 0
+
+    # One-time tasks completed directly
+    onetime_done = Task.query.filter_by(
+        user_id=user_id,
+        recurrence_type='none',
         completion_status=True
     ).count()
-    
-    # Update the user
-    user = User.query.get(user_id)
-    if user:
-        user.points = completed_count
-        db.session.commit()
+
+    # Recurring task occurrences that are marked complete
+    # Join TaskOccurrence → Task to filter by user_id
+    recurring_done = (
+        db.session.query(TaskOccurrence)
+        .join(Task, Task.task_id == TaskOccurrence.task_id)
+        .filter(
+            Task.user_id == user_id,
+            Task.recurrence_type != 'none',
+            TaskOccurrence.completed == True
+        )
+        .count()
+    )
+
+    user.points = onetime_done + recurring_done
+    db.session.commit()
+    return user.points

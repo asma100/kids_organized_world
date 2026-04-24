@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan Sheet – KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <style>
+    .upload-zone {
+      border: 3px dashed var(--sky);
+      border-radius: var(--radius);
+      padding: 3rem 2rem;
+      text-align: center;
+      background: #f0fbff;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      background: #d0f0ff;
+      border-color: var(--ink);
+      box-shadow: var(--shadow-lg);
+    }
+    .upload-icon { font-size: 4rem; display: block; margin-bottom: 0.8rem; }
+    .upload-zone input[type=file] { display: none; }
+    .preview-img {
+      max-width: 100%;
+      max-height: 300px;
+      border: var(--border);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow);
+      margin-top: 1rem;
+      display: none;
+    }
+    .step-list {
+      counter-reset: steps;
+      list-style: none;
+      padding: 0;
+    }
+    .step-list li {
+      counter-increment: steps;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      font-weight: 700;
+    }
+    .step-list li::before {
+      content: counter(steps);
+      background: var(--coral);
+      color: white;
+      border: 2.5px solid var(--ink);
+      border-radius: 50%;
+      width: 2rem;
+      height: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Fredoka One', cursive;
+      font-size: 1rem;
+      flex-shrink: 0;
+      box-shadow: 2px 2px 0 var(--ink);
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+      </div>
+      <div class="navbar-nav">
+        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+
+    <h2>📷 Scan Your Task Sheet</h2>
+
+    <div class="two-col-layout" style="align-items:start;">
+
+      <!-- Upload form -->
+      <div>
+        <div class="section-card form-card">
+          <form method="POST" action="{{ url_for('scan_sheet') }}"
+                enctype="multipart/form-data" id="scan-form">
+
+            <div class="upload-zone" id="upload-zone"
+                 onclick="document.getElementById('sheet_image').click()"
+                 ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="handleDrop(event)">
+              <span class="upload-icon">📸</span>
+              <p style="font-family:'Fredoka One',cursive; font-size:1.2rem;">
+                Tap to choose a photo
+              </p>
+              <p class="text-muted">or drag &amp; drop here</p>
+              <p class="text-muted" style="font-size:0.8rem;">
+                JPG · PNG · WebP · BMP · TIFF
+              </p>
+              <input type="file" name="sheet_image" id="sheet_image"
+                     accept="image/*" onchange="previewImage(this)">
+            </div>
+
+            <img id="preview" class="preview-img" alt="Preview">
+
+            <div style="margin-top:1.2rem;">
+              <button type="submit" class="btn btn-success btn-block"
+                      id="submit-btn" disabled>
+                🔍 Process Sheet
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div class="section-card" style="margin-top:1rem; background:#fffbe6; border-color:#FFD93D;">
+          <h3 class="section-title">📸 Tips for Best Results</h3>
+          <ul style="list-style:none; padding:0;">
+            <li style="margin-bottom:0.5rem;">✅ Lay the sheet flat on a table</li>
+            <li style="margin-bottom:0.5rem;">✅ Good lighting — no shadows on checkboxes</li>
+            <li style="margin-bottom:0.5rem;">✅ All 4 black corner circles must be visible</li>
+            <li style="margin-bottom:0.5rem;">✅ Fill checkboxes with a dark pen (not pencil)</li>
+            <li style="margin-bottom:0.5rem;">✅ Don't fold or crumple the sheet</li>
+            <li>✅ Phone camera is fine — no need for a scanner</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Instructions -->
+      <div>
+        <div class="section-card green-card">
+          <h3 class="section-title">🖨️ How It Works</h3>
+          <ol class="step-list">
+            <li>
+              <span>Go to your <a href="{{ url_for('taskList') }}">Task List</a>,
+              choose a date, and click <strong>"🖨️ Print Sheet"</strong>.</span>
+            </li>
+            <li>
+              <span>Print the PDF. It includes a QR code and 4 black corner
+              circles — don't trim those!</span>
+            </li>
+            <li>
+              <span>Do your tasks during the day. For each finished task,
+              <strong>fill in the checkbox</strong> with a dark pen.</span>
+            </li>
+            <li>
+              <span>Take a photo of the sheet with your phone or use a
+              scanner. Come back here and upload it.</span>
+            </li>
+            <li>
+              <span>The app reads which boxes are filled and automatically
+              marks those tasks as done! 🎉</span>
+            </li>
+          </ol>
+        </div>
+
+        <div class="section-card" style="margin-top:1rem;">
+          <h3 class="section-title">📋 Recent Sheets</h3>
+          {% set recent = [] %}
+          <p class="text-muted">
+            Your recently printed sheets appear here after you generate them
+            from the Task List page.
+          </p>
+          <a href="{{ url_for('taskList') }}" class="btn btn-primary btn-sm">
+            Go to Task List → Print
+          </a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function previewImage(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = document.getElementById('preview');
+        img.src = e.target.result;
+        img.style.display = 'block';
+        document.getElementById('submit-btn').disabled = false;
+        document.getElementById('upload-zone').querySelector('p').textContent = file.name;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function handleDrop(event) {
+      event.preventDefault();
+      document.getElementById('upload-zone').classList.remove('drag-over');
+      const file = event.dataTransfer.files[0];
+      if (!file) return;
+      const input = document.getElementById('sheet_image');
+      // Create a DataTransfer to assign the dropped file to the input
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      previewImage(input);
+    }
+  </script>
+</body>
+</html>
