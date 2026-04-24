@@ -117,7 +117,17 @@
     {% endif %}
 
     <a href="{{ url_for('createtask') }}" class="btn btn-success mb-3">+ New Task</a>
-
+<a href="{{ url_for('print_task_sheet', date=viewed_date.strftime('%Y-%m-%d')) }}"
+   class="btn btn-primary mb-3"
+   style="background: var(--lavender);">
+  🖨️ Print Sheet
+</a>
+ 
+<a href="{{ url_for('scan_sheet') }}"
+   class="btn mb-3"
+   style="background: var(--mint); border: var(--border); box-shadow: var(--shadow); font-weight:800;">
+  📷 Scan Sheet
+</a>
     <!-- ── Task List ── -->
     <div class="task-wbox">
       {% if task_items %}
@@ -182,7 +192,10 @@
           {% if is_today %}
             <p style="font-size:1.1rem;">🎉 No tasks today!
               <a href="{{ url_for('createtask') }}">Create one?</a>
+              
+ 
             </p>
+            
           {% else %}
             <p style="font-size:1.1rem;">📭 No tasks on {{ viewed_date.strftime('%d %B %Y') }}.</p>
           {% endif %}

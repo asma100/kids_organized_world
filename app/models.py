@@ -1,7 +1,7 @@
 from datetime import datetime, date as date_type
 from app import db, login_manager
 from flask_login import UserMixin
-
+import uuid
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -244,3 +244,60 @@ class SavingsGoal(db.Model):
     target_amount = db.Column(db.Float, nullable=False)
     reward_description = db.Column(db.String(255), default="")
     achieved = db.Column(db.Boolean, nullable=False, default=False)
+
+
+    # ── OMR Sheet Models ───────────────────────────────────────────────────────
+
+ 
+class TaskSheet(db.Model):
+    """
+    One printed+scanned OMR sheet.
+    Covers one user × one date.
+    The sheet_uuid is encoded in the page QR code so the scanner
+    knows which tasks to update when the sheet is uploaded.
+    """
+    __tablename__ = 'task_sheet'
+ 
+    id         = db.Column(db.Integer, primary_key=True)
+    sheet_uuid = db.Column(db.String(36), unique=True, nullable=False,
+                           default=lambda: str(uuid.uuid4()))
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    sheet_date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+ 
+    # Set to True once the sheet image has been scanned and processed
+    processed    = db.Column(db.Boolean, nullable=False, default=False)
+    processed_at = db.Column(db.DateTime, nullable=True)
+ 
+    checkboxes = db.relationship('TaskCheckbox', backref='sheet',
+                                 lazy=True, cascade='all, delete-orphan')
+ 
+    def __repr__(self):
+        return f"TaskSheet(uuid={self.sheet_uuid[:8]}, date={self.sheet_date})"
+ 
+ 
+class TaskCheckbox(db.Model):
+    """
+    Maps one printed checkbox on a TaskSheet to one Task.
+ 
+    cx / cy are stored in PIXEL coordinates at SCAN_DPI (150 dpi by default),
+    with y=0 at the TOP of the page (OpenCV convention).
+    The OMR scanner warps the uploaded scan to match the original template
+    dimensions before sampling at these coordinates.
+    """
+    __tablename__ = 'task_checkbox'
+ 
+    id          = db.Column(db.Integer, primary_key=True)
+    sheet_id    = db.Column(db.Integer, db.ForeignKey('task_sheet.id'), nullable=False)
+    task_id     = db.Column(db.Integer, db.ForeignKey('task.task_id'), nullable=False)
+    page_number = db.Column(db.Integer, nullable=False, default=1)
+ 
+    # Centre of the checkbox square in template pixel space
+    cx     = db.Column(db.Integer, nullable=False)
+    cy     = db.Column(db.Integer, nullable=False)
+    # Sampling radius — pixels inside this circle are inspected for pen marks
+    radius = db.Column(db.Integer, nullable=False, default=18)
+ 
+    def __repr__(self):
+        return (f"TaskCheckbox(sheet={self.sheet_id}, "
+                f"task={self.task_id}, pos=({self.cx},{self.cy}))")
