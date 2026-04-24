@@ -13,3 +13,5 @@ numpy>=1.25.2
 opencv-python-headless>=4.7.0
 pyzbar>=0.1.8
 reportlab>=3.6.14
+arabic-reshaper==3.0.0
+python-bidi==0.4.2
