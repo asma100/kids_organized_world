@@ -4,16 +4,13 @@ omr_pdf.py  (v4 — Arabic fix)
 Install once:
     pip install arabic-reshaper python-bidi reportlab qrcode[pil] Pillow
 
-
 Font file — download and save to  app/static/fonts/Amiri-Regular.ttf
     https://github.com/aliftype/amiri/releases  → Amiri-Regular.ttf
-
 
 How Arabic rendering works in ReportLab
 ────────────────────────────────────────
 ReportLab draws every string left-to-right in the order the bytes appear.
 It has NO built-in BiDi or shaping engine. So we must:
-
 
   Step 1 — arabic_reshaper.reshape(text)
            Converts isolated Unicode code points into their correct
@@ -21,34 +18,28 @@ It has NO built-in BiDi or shaping engine. So we must:
            Without this you get disconnected letters: ا ل د ر ا س ة
            With this you get: الدراسة  (letters joined as they should be)
 
-
   Step 2 — DO NOT call get_display() / bidi.
            get_display() reverses the string for left-to-right terminals.
            ReportLab's drawRightString() already anchors from the right,
            which is all we need. Calling both reverses the string twice.
 
-
   Step 3 — drawRightString(right_anchor, y, shaped_text)
            Draws the shaped text ending at right_anchor.
            Because Arabic is RTL, anchoring from the right is natural.
-
 
 Row layout for Arabic tasks
 ────────────────────────────
   [ checkbox ] ←── dotted line ───→ [ Arabic title ] [ hint ]
   left edge                          right_title_x    right_edge
 
-
 The hint (time + recurrence) sits at the far right.
 The Arabic title sits just to the left of the hint, right-aligned.
 The dotted line fills the gap between checkbox and title.
 """
 
-
 import io
 import os
 import uuid
-
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -56,7 +47,6 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-
 
 # ── Layout constants ──────────────────────────────────────────────────────────
 PAGE_W, PAGE_H = A4                   # 595.28 × 841.89 pts
@@ -72,20 +62,15 @@ PT_TO_PX       = SCAN_DPI / 72.0
 DARK_FILL      = colors.black
 LIGHT_FILL     = colors.white
 
-
 LATIN_FONT      = 'Helvetica'
 LATIN_FONT_BOLD = 'Helvetica-Bold'
 ARABIC_FONT_NAME = 'Amiri'
-
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 ARABIC_FONT_PATH = os.path.join(_HERE, 'static', 'fonts', 'Amiri-Regular.ttf')
 
 
-
-
 # ── Font registration ─────────────────────────────────────────────────────────
-
 
 def _register_arabic_font():
     if ARABIC_FONT_NAME in pdfmetrics.getRegisteredFontNames():
@@ -107,15 +92,10 @@ def _register_arabic_font():
         return False
 
 
-
-
 _ARABIC_FONT_OK = _register_arabic_font()
 
 
-
-
 # ── Arabic helpers ────────────────────────────────────────────────────────────
-
 
 def _is_arabic(text: str) -> bool:
     """True if the string contains any Arabic Unicode character."""
@@ -129,30 +109,33 @@ def _is_arabic(text: str) -> bool:
     return False
 
 
-
-
 def _shape_arabic(text: str) -> str:
+    """
+    Reshape Arabic text so letters connect correctly in the PDF.
+
+    Uses explicit ArabicReshaper config to ensure all ligatures and
+    letter-joining rules are active regardless of any default config file.
+    Does NOT apply bidi — drawRightString handles RTL anchoring.
+    """
     try:
         import arabic_reshaper
-        from bidi.algorithm import get_display
-
-
-        reshaped = arabic_reshaper.reshape(text)
-        bidi_text = get_display(reshaped)
-        return bidi_text
-
-
-    except ImportError:
-        print("[omr_pdf] arabic reshaper/bidi not installed")
+        config = {
+            'support_ligatures':   True,
+            'support_zwj':         True,
+            'delete_harakat':      False,
+            'delete_tatweel':      False,
+            'shift_harakat_position': False,
+            'use_unsupported_chars_as_unsupported': True,
+        }
+        reshaper = arabic_reshaper.ArabicReshaper(configuration=config)
+        return reshaper.reshape(text)
+    except Exception as e:
+        print(f"[omr_pdf] arabic_reshaper error: {e}")
         return text
-
-
 
 
 def _arabic_font() -> str:
     return ARABIC_FONT_NAME if _ARABIC_FONT_OK else LATIN_FONT
-
-
 
 
 def _str_width(c, text: str, font: str, size: int) -> float:
@@ -160,15 +143,10 @@ def _str_width(c, text: str, font: str, size: int) -> float:
     return c.stringWidth(text, font, size)
 
 
-
-
 # ── Unit / coordinate helpers ─────────────────────────────────────────────────
-
 
 def _pt_to_px(pt_value):
     return int(round(pt_value * PT_TO_PX))
-
-
 
 
 def _marker_centres_pt():
@@ -178,8 +156,6 @@ def _marker_centres_pt():
         'BL': (MARGIN,          MARGIN),
         'BR': (PAGE_W - MARGIN, MARGIN),
     }
-
-
 
 
 def get_template_marker_centres():
@@ -193,16 +169,11 @@ def get_template_marker_centres():
     return result
 
 
-
-
 TEMPLATE_WIDTH_PX  = _pt_to_px(PAGE_W)
 TEMPLATE_HEIGHT_PX = _pt_to_px(PAGE_H)
 
 
-
-
 # ── Drawing primitives ────────────────────────────────────────────────────────
-
 
 def _draw_corner_markers(c):
     c.setFillColor(DARK_FILL)
@@ -211,13 +182,10 @@ def _draw_corner_markers(c):
         c.circle(x, y, MARKER_R, fill=1, stroke=0)
 
 
-
-
 def _draw_qr(c, sheet_uuid):
     tr_x, tr_y = _marker_centres_pt()['TR']
     qr_x = tr_x - MARKER_R - QR_SIZE - 4 * mm
     qr_y = tr_y - QR_SIZE / 2
-
 
     try:
         import qrcode as _qrcode
@@ -243,8 +211,6 @@ def _draw_qr(c, sheet_uuid):
                             f"QR:{sheet_uuid[:8]}")
 
 
-
-
 def _draw_checkbox(c, x, y, size):
     """Open square checkbox. (x, y) = bottom-left corner."""
     c.setStrokeColor(DARK_FILL)
@@ -254,19 +220,14 @@ def _draw_checkbox(c, x, y, size):
     c.setLineWidth(1)
 
 
-
-
 # ── Row rendering ─────────────────────────────────────────────────────────────
-
 
 def _draw_task_row(c, task, label_x, label_y, right_edge):
     """
     Draw the task title + time hint + dotted leader for one row.
 
-
     Layout (LTR task):
       label_x  [Title text] ··· [hint]  right_edge
-
 
     Layout (RTL Arabic task):
       label_x  ··· [Arabic title] [hint]  right_edge
@@ -275,7 +236,6 @@ def _draw_task_row(c, task, label_x, label_y, right_edge):
     """
     from app.taskManagement import recurrence_label
 
-
     # ── 1. Measure and draw hint (always Latin, far right) ────────────────
     hint      = f"{task.time.strftime('%H:%M')}  {recurrence_label(task)}"
     hint_size = 8
@@ -283,19 +243,15 @@ def _draw_task_row(c, task, label_x, label_y, right_edge):
     hint_w    = c.stringWidth(hint, LATIN_FONT, hint_size)
     hint_x    = right_edge - hint_w          # left edge of hint text
 
-
     c.setFillColor(colors.grey)
     c.setFont(LATIN_FONT, hint_size)
     c.drawString(hint_x, label_y, hint)
     c.setFillColor(DARK_FILL)
 
-
     GAP = 3 * mm   # gap between hint and title, and between title and dots
-
 
     # ── 2. Draw task title ────────────────────────────────────────────────
     title_size = 11
-
 
     if _is_arabic(task.title) and _ARABIC_FONT_OK:
         # Shape the text (join letters) but do NOT apply bidi reversal
@@ -304,19 +260,16 @@ def _draw_task_row(c, task, label_x, label_y, right_edge):
         c.setFont(font, title_size)
         title_w = c.stringWidth(shaped, font, title_size)
 
-
         # Right edge of title = left edge of hint minus a gap
         title_right = hint_x - GAP
         # Draw right-to-left anchored at title_right
         c.setFillColor(DARK_FILL)
         c.drawRightString(title_right, label_y, shaped)
 
-
         # Dotted line: from after checkbox to left edge of title
         title_left  = title_right - title_w
         dot_x0      = label_x
         dot_x1      = title_left - GAP
-
 
     else:
         # Latin / fallback
@@ -325,10 +278,8 @@ def _draw_task_row(c, task, label_x, label_y, right_edge):
         c.setFillColor(DARK_FILL)
         c.drawString(label_x, label_y, task.title)
 
-
         dot_x0 = label_x + title_w + GAP
         dot_x1 = hint_x - GAP
-
 
     # ── 3. Dotted leader line ─────────────────────────────────────────────
     if dot_x1 > dot_x0 + 4 * mm:
@@ -341,10 +292,7 @@ def _draw_task_row(c, task, label_x, label_y, right_edge):
         c.setStrokeColor(DARK_FILL)
 
 
-
-
 # ── Main generator ────────────────────────────────────────────────────────────
-
 
 def generate_task_sheet(task_items, sheet_date, user):
     """
@@ -353,7 +301,6 @@ def generate_task_sheet(task_items, sheet_date, user):
     """
     from app import db
     from app.models import TaskSheet, TaskCheckbox
-
 
     sheet_uuid = str(uuid.uuid4())
     sheet = TaskSheet(
@@ -364,28 +311,22 @@ def generate_task_sheet(task_items, sheet_date, user):
     db.session.add(sheet)
     db.session.flush()
 
-
     content_top    = PAGE_H - MARGIN - MARKER_R - HEADER_H
     content_bottom = MARGIN + MARKER_R + FOOTER_H
     rows_per_page  = max(1, int((content_top - content_bottom) / ROW_HEIGHT))
 
-
     tasks       = [item['task'] for item in task_items]
     total_pages = max(1, -(-len(tasks) // rows_per_page))
-
 
     buf = io.BytesIO()
     c   = rl_canvas.Canvas(buf, pagesize=A4)
     checkbox_records = []
 
-
     for page_num in range(1, total_pages + 1):
         page_tasks = tasks[(page_num-1)*rows_per_page : page_num*rows_per_page]
 
-
         _draw_corner_markers(c)
         _draw_qr(c, sheet_uuid)
-
 
         # ── Header ────────────────────────────────────────────────────────
         tl_x, tl_y = _marker_centres_pt()['TL']
@@ -393,17 +334,14 @@ def generate_task_sheet(task_items, sheet_date, user):
         header_y   = tl_y - 14 * mm
         right_edge = PAGE_W - MARGIN - MARKER_R - 2 * mm
 
-
         c.setFillColor(DARK_FILL)
         c.setFont(LATIN_FONT_BOLD, 16)
         c.drawString(header_x, header_y, "Kids Organized World")
-
 
         c.setFont(LATIN_FONT, 10)
         c.drawString(header_x, header_y - 7*mm,
                      f"Tasks: {sheet_date.strftime('%A, %d %B %Y')}   "
                      f"Page {page_num}/{total_pages}")
-
 
         c.setFont(LATIN_FONT, 7)
         c.setFillColor(colors.grey)
@@ -411,15 +349,15 @@ def generate_task_sheet(task_items, sheet_date, user):
                      f"Sheet: {sheet_uuid[:18]}...   User: {user.username}")
         c.setFillColor(DARK_FILL)
 
-
         # Separator
         sep_y = content_top + 3 * mm
         c.setLineWidth(0.8); c.setStrokeColor(colors.lightgrey)
         c.line(header_x, sep_y, right_edge, sep_y)
         c.setStrokeColor(DARK_FILL); c.setLineWidth(1)
 
-
         # ── Task rows ─────────────────────────────────────────────────────
+        IMG_SIZE = 9 * mm   # small square image next to title in PDF
+
         for row_idx, task in enumerate(page_tasks):
             row_y    = content_top - row_idx * ROW_HEIGHT
             cb_cx_pt = header_x + CHECKBOX_SIZE / 2
@@ -427,20 +365,20 @@ def generate_task_sheet(task_items, sheet_date, user):
             cb_left  = cb_cx_pt - CHECKBOX_SIZE / 2
             cb_bot   = cb_cy_pt - CHECKBOX_SIZE / 2
 
-
             _draw_checkbox(c, cb_left, cb_bot, CHECKBOX_SIZE)
 
+            # Try to draw the task image just after the checkbox
+            img_x    = cb_left + CHECKBOX_SIZE + 2 * mm
+            img_bot  = cb_cy_pt - IMG_SIZE / 2      # vertically centred
+            has_img  = _draw_task_image(c, task, img_x, img_bot, IMG_SIZE)
 
-            # label_y: vertically centred in the row, accounting for font baseline
-            label_x = cb_left + CHECKBOX_SIZE + 4 * mm
+            # label_x shifts right to make room for the image if present
+            label_x = img_x + (IMG_SIZE + 2 * mm if has_img else 0)
             label_y = cb_cy_pt - 4
-
 
             _draw_task_row(c, task, label_x, label_y, right_edge)
 
-
             checkbox_records.append((task.task_id, page_num, cb_cx_pt, cb_cy_pt))
-
 
         # ── Footer ────────────────────────────────────────────────────────
         c.setFont(LATIN_FONT, 7)
@@ -452,10 +390,8 @@ def generate_task_sheet(task_items, sheet_date, user):
         c.setFillColor(DARK_FILL)
         c.showPage()
 
-
     c.save()
     pdf_bytes = buf.getvalue()
-
 
     # ── Persist checkbox positions ─────────────────────────────────────────────
     for task_id, page_num, cx_pt, cy_pt in checkbox_records:
@@ -468,7 +404,89 @@ def generate_task_sheet(task_items, sheet_date, user):
             radius      = _pt_to_px(CHECKBOX_SIZE / 2 * 1.4),
         ))
 
-
     db.session.commit()
     return pdf_bytes, sheet
 
+
+# ── Arabic diagnostic (call this from Flask shell to debug) ───────────────────
+
+def diagnose_arabic():
+    """
+    Run this from your Flask shell to check Arabic support:
+        from app.omr_pdf import diagnose_arabic
+        diagnose_arabic()
+    """
+    print("=" * 55)
+    print("Arabic PDF support diagnostic")
+    print("=" * 55)
+
+    # 1. Font file
+    exists = os.path.exists(ARABIC_FONT_PATH)
+    print(f"Font file exists : {exists}")
+    print(f"Font path        : {ARABIC_FONT_PATH}")
+    if not exists:
+        print("  *** FIX: Download Amiri-Regular.ttf from")
+        print("      https://github.com/aliftype/amiri/releases")
+        print(f"     and save to: {ARABIC_FONT_PATH}")
+
+    # 2. Font registered
+    registered = ARABIC_FONT_NAME in pdfmetrics.getRegisteredFontNames()
+    print(f"Font registered  : {registered}")
+
+    # 3. arabic_reshaper
+    try:
+        import arabic_reshaper
+        test   = "الدراسة"
+        shaped = _shape_arabic(test)
+        same   = shaped == test
+        print(f"arabic_reshaper  : OK  (input={test!r}  shaped={shaped!r})")
+        if same:
+            print("  *** WARNING: shaped == input — reshaper may not be working")
+    except Exception as e:
+        print(f"arabic_reshaper  : MISSING or ERROR — {e}")
+        print("  *** FIX: pip install arabic-reshaper")
+
+    # 4. python-bidi (optional, not used for drawing but good to have)
+    try:
+        from bidi.algorithm import get_display
+        print("python-bidi      : OK (installed but NOT used for drawing)")
+    except ImportError:
+        print("python-bidi      : not installed (optional, not needed)")
+
+    print("=" * 55)
+
+
+# ── Task image embedding ──────────────────────────────────────────────────────
+
+def _draw_task_image(c, task, img_x, img_y, img_size):
+    """
+    Draw the task image as a small square at (img_x, img_y) if it exists.
+    img_y is the BOTTOM of the image box (ReportLab convention).
+    Returns True if an image was drawn, False otherwise.
+    """
+    if not getattr(task, 'image_filename', None):
+        return False
+
+    from app.task_image import get_image_path
+    path = get_image_path(task.image_filename, task.user_id)
+    if not path:
+        return False
+
+    try:
+        c.drawImage(
+            path,
+            img_x, img_y,
+            width=img_size, height=img_size,
+            preserveAspectRatio=True,
+            mask='auto',
+        )
+        # Thin border around the image
+        c.setStrokeColor(colors.grey)
+        c.setLineWidth(0.8)
+        c.rect(img_x, img_y, img_size, img_size, fill=0, stroke=1)
+        c.setLineWidth(1)
+        c.setStrokeColor(DARK_FILL)
+        return True
+    except Exception as e:
+        print(f"[omr_pdf] Could not embed image for task '{task.title}': {e}")
+        return False

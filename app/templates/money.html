@@ -34,23 +34,26 @@
 
     <!-- Balance buckets -->
     <div class="money-grid">
+      <div class="money-bucket unassigned">
+        <div class="bucket-icon">🫙</div>
+        <div class="bucket-label">Unassigned</div>
+        <div class="bucket-amount">{{ "%.2f"|format(account.unassigned_balance) }}</div>
+        <div class="bucket-hint">Money waiting to be sorted</div>
+      </div>
       <div class="money-bucket saving">
-        <div class="bucket-icon">🏦</div>
+        <div class="bucket-icon">🫙</div>
         <div class="bucket-label">Saving</div>
         <div class="bucket-amount">{{ "%.2f"|format(account.saving_balance) }}</div>
-        <div style="font-size:0.8rem;font-weight:700;">{{ account.saving_pct }}% of income</div>
       </div>
       <div class="money-bucket spending">
-        <div class="bucket-icon">🛍</div>
+        <div class="bucket-icon">🫙</div>
         <div class="bucket-label">Spending</div>
         <div class="bucket-amount">{{ "%.2f"|format(account.spending_balance) }}</div>
-        <div style="font-size:0.8rem;font-weight:700;">{{ account.spending_pct }}% of income</div>
       </div>
       <div class="money-bucket donating">
-        <div class="bucket-icon">❤️</div>
-        <div class="bucket-label">Donating</div>
+        <div class="bucket-icon">🫙</div>
+        <div class="bucket-label">Kindness</div>
         <div class="bucket-amount">{{ "%.2f"|format(account.donating_balance) }}</div>
-        <div style="font-size:0.8rem;font-weight:700;">{{ account.donating_pct }}% of income</div>
       </div>
     </div>
 
@@ -76,6 +79,28 @@
               {{ add_form.note.label(class="form-control-label") }}
               {{ add_form.note(class="form-control", placeholder="e.g. Pocket money from dad") }}
             </div>
+            <div class="form-group">
+              {{ add_form.add_mode.label(class="form-control-label") }}
+              {{ add_form.add_mode(class="form-control") }}
+            </div>
+
+            <div class="form-group">
+              <div style="font-size:0.85rem; font-weight:800; margin-bottom:0.4rem;">Auto split % (only used if you choose auto split)</div>
+              <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.6rem;">
+                <div>
+                  {{ add_form.saving_pct.label(class="form-control-label") }}
+                  {{ add_form.saving_pct(class="form-control") }}
+                </div>
+                <div>
+                  {{ add_form.spending_pct.label(class="form-control-label") }}
+                  {{ add_form.spending_pct(class="form-control") }}
+                </div>
+                <div>
+                  {{ add_form.donating_pct.label(class="form-control-label") }}
+                  {{ add_form.donating_pct(class="form-control") }}
+                </div>
+              </div>
+            </div>
             {{ add_form.submit(class="btn btn-success btn-block") }}
           </form>
         </div>
@@ -99,7 +124,7 @@
 
         <!-- Donate money -->
         <div class="section-card form-card" style="margin-top:1rem; border-color:#C77DFF;">
-          <h3 class="section-title">❤️ Donate</h3>
+          <h3 class="section-title">🤝 Kindness</h3>
           <form method="POST" action="{{ url_for('money_donate') }}">
             {{ spend_form.hidden_tag() }}
             <div class="form-group">
@@ -108,10 +133,10 @@
             </div>
             <div class="form-group">
               {{ spend_form.note.label(class="form-control-label") }}
-              {{ spend_form.note(class="form-control", placeholder="Who did you donate to?") }}
+              {{ spend_form.note(class="form-control", placeholder="What kindness did you do?") }}
             </div>
             <button type="submit" class="btn btn-block" style="background:var(--lavender);border:var(--border);box-shadow:var(--shadow);font-weight:800;">
-              ❤️ Donate
+              🤝 Add Kindness
             </button>
           </form>
         </div>
@@ -125,7 +150,7 @@
                 <span>
                   {% if tx.transaction_type == 'income' %}💰
                   {% elif tx.transaction_type == 'expense' %}🛍
-                  {% else %}❤️{% endif %}
+                  {% else %}🤝{% endif %}
                   {{ tx.note or tx.transaction_type }}
                 </span>
                 <span style="font-weight:800;color:{{ '#2d7a2d' if tx.amount > 0 else '#cc3333' }};">
@@ -148,14 +173,14 @@
           <h3 class="section-title">🎯 Savings Goals</h3>
           {% if goals %}
             {% for goal in goals %}
-              {% set pct = [((account.saving_balance / goal.target_amount) * 100)|int, 100]|min %}
+              {% set pct = [(((goal.current_amount or 0) / goal.target_amount) * 100)|int, 100]|min %}
               <div style="margin-bottom:1rem;">
                 <div style="display:flex; justify-content:space-between;">
                   <strong>{{ goal.name }}</strong>
                   {% if goal.achieved %}
                     <span class="badge badge-success">🎉 Done!</span>
                   {% else %}
-                    <span style="font-size:0.85rem; font-weight:700;">{{ "%.2f"|format(account.saving_balance) }} / {{ "%.2f"|format(goal.target_amount) }}</span>
+                    <span style="font-size:0.85rem; font-weight:700;">{{ "%.2f"|format(goal.current_amount or 0) }} / {{ "%.2f"|format(goal.target_amount) }}</span>
                   {% endif %}
                 </div>
                 <div class="progress-bar-wrap">
@@ -163,6 +188,22 @@
                 </div>
                 {% if goal.reward_description %}
                   <p style="font-size:0.8rem; color:#666;">🎁 {{ goal.reward_description }}</p>
+                {% endif %}
+
+                {% if not goal.achieved %}
+                  <form method="POST" action="{{ url_for('money_goal_deposit', goal_id=goal.id) }}" style="margin-top:0.6rem;">
+                    {{ goal_deposit_form.hidden_tag() }}
+                    <div style="display:flex; gap:0.6rem; align-items:flex-end;">
+                      <div style="flex:1;">
+                        {{ goal_deposit_form.amount.label(class="form-control-label") }}
+                        {{ goal_deposit_form.amount(class="form-control", placeholder="0.00", step="0.01", id="goal_amount_" ~ goal.id) }}
+                      </div>
+                      {{ goal_deposit_form.submit(class="btn btn-primary") }}
+                    </div>
+                    <div style="font-size:0.8rem; font-weight:700; margin-top:0.35rem;">
+                      Deposits come from your Saving jar.
+                    </div>
+                  </form>
                 {% endif %}
               </div>
             {% endfor %}
@@ -194,8 +235,8 @@
 
         <!-- Split percentages -->
         <div class="section-card form-card" style="margin-top:1rem; border-color:#6EC6F5;">
-          <h3 class="section-title">📊 Update Split %</h3>
-          <p style="font-size:0.85rem; color:#666; margin-bottom:0.8rem;">Must add up to 100!</p>
+          <h3 class="section-title">📊 Sort Unassigned Money</h3>
+          <p style="font-size:0.85rem; color:#666; margin-bottom:0.8rem;">Use percentages to move your unassigned money into the jars.</p>
           <form method="POST" action="{{ url_for('money_split') }}">
             {{ split_form.hidden_tag() }}
             <div class="form-group">

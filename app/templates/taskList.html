@@ -136,17 +136,31 @@
           {% set completed = item.completed %}
           <article class="content-section {{ 'task-done' if completed else '' }}">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem;">
-              <div>
-                <h4>{{ task.title }}</h4>
-                <p class="text-muted">
-                  🕐 {{ task.time.strftime('%H:%M') }}
-                  &nbsp;·&nbsp;
-                  <span style="font-size:0.82rem; font-weight:700;">
-                    {{ recurrence_label(task) }}
-                  </span>
-                </p>
-                <p style="margin-top:0.3rem;">{{ task.description }}</p>
-              </div>
+              <div style="display:flex; align-items:center; gap:0.8rem;">
+ 
+  <!-- Task image thumbnail (only shown if the task has one) -->
+  {% if task.image_filename %}
+    <img src="{{ url_for('static', filename='task_images/' ~ task.user_id|string ~ '/' ~ task.image_filename) }}"
+         alt="{{ task.title }}"
+         style="width:56px; height:56px; object-fit:cover;
+                border:var(--border); border-radius:var(--radius-sm);
+                box-shadow:var(--shadow); flex-shrink:0;">
+  {% endif %}
+ 
+  <div>
+    <h4>{{ task.title }}</h4>
+    <p class="text-muted">
+      🕐 {{ task.time.strftime('%H:%M') }}
+      &nbsp;·&nbsp;
+      <span style="font-size:0.82rem; font-weight:700;">
+        {{ recurrence_label(task) }}
+      </span>
+    </p>
+    <p style="margin-top:0.3rem;">{{ task.description }}</p>
+  </div>
+ 
+</div>
+ 
               <div>
                 {% if completed %}
                   <span class="badge badge-success">✅ Done</span>

@@ -4,79 +4,109 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kids Organized World</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
 </head>
-<body>
+<body class="home-page">
   <header class="site-header">
-    <nav>
-      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
-      <div class="navbar-nav mr-auto">
-        <a class="nav-item" href="{{ url_for('home') }}">Home</a>
-        {% if current_user.is_authenticated %}
-          <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
-          <a class="nav-item" href="{{ url_for('scan_sheet') }}">📷 Scan</a>
-          <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
-          <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
-          <a class="nav-item" href="{{ url_for('money') }}">My Money</a>
-        {% endif %}
-      </div>
-      <div class="navbar-nav">
-        {% if current_user.is_authenticated %}
-          <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
-        {% else %}
-          <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
-          <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
-        {% endif %}
-      </div>
+    <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+    <nav class="top-nav" aria-label="Main navigation">
+      <a href="{{ url_for('home') }}">Home</a>
+      <a href="{{ url_for('taskList') }}">Tasks</a>
+      <a href="{{ url_for('scan_sheet') }}">Scan</a>
+      <a href="{{ url_for('money') }}">Money</a>
+      {% if current_user.is_authenticated %}
+        <a href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a href="{{ url_for('login') }}">Login</a>
+      {% endif %}
     </nav>
   </header>
 
-  <main role="main" class="container">
+  <main role="main" class="home-main">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}{% for category, message in messages %}
         <div class="alert alert-{{ category }}">{{ message }}</div>
       {% endfor %}{% endif %}
     {% endwith %}
 
-    <h1 class="main">Kids Organized World 🌍</h1>
+    <section class="hero">
+      <div>
+        <h1 class="hero-title">Make Tasks Fun 🎮</h1>
+        <p class="hero-text">
+          Turn daily chores into a game with rewards, stars, and achievements.
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="{{ url_for('taskList') }}">Start Now</a>
+          <a class="btn btn-success" href="{{ url_for('goodactions') }}">Good Actions</a>
+        </div>
+      </div>
+
+      <img
+        src="{{ url_for('static', filename='images/cute.jpg') }}"
+        alt="Children playing happily in a park"
+      >
+    </section>
 
     {% if current_user.is_authenticated %}
-      <div style="margin-bottom:1.5rem;">
-        <span class="points-banner"><span class="icon">⭐</span> {{ current_user.points }} Points</span>
-        <span class="crosses-banner"><span class="icon">❌</span> {{ current_user.crosses }} Crosses</span>
-      </div>
+      <section class="score-grid" aria-label="Your progress summary">
+        <div class="score-card score-card-points">
+          <span class="score-icon">⭐</span>
+          <div>
+            <p class="score-label">Points</p>
+            <p class="score-value">{{ (view_user.points if view_user else current_user.points) }}</p>
+          </div>
+        </div>
+
+        <div class="score-card score-card-crosses">
+          <span class="score-icon">❌</span>
+          <div>
+            <p class="score-label">Mistakes</p>
+            <p class="score-value">{{ (view_user.crosses if view_user else current_user.crosses) }}</p>
+          </div>
+        </div>
+      </section>
     {% endif %}
 
-    
-
-    <!-- Big navigation cards -->
-    <div class="home-grid">
-
+    <section class="home-grid" aria-label="Feature shortcuts">
       <a href="{{ url_for('taskList') }}" class="home-card tasks-card">
         <div class="home-card-icon">📋</div>
-        <div class="home-card-title">My Tasks</div>
-        <div class="home-card-desc">View, complete &amp; manage your tasks</div>
+        <h3>Tasks</h3>
       </a>
 
       <a href="{{ url_for('goodactions') }}" class="home-card good-card">
         <div class="home-card-icon">⭐</div>
-        <div class="home-card-title">Good Actions</div>
-        <div class="home-card-desc">Earn points for doing great things</div>
+        <h3>Good Actions</h3>
       </a>
 
       <a href="{{ url_for('badactions') }}" class="home-card bad-card">
         <div class="home-card-icon">❌</div>
-        <div class="home-card-title">Bad Actions</div>
-        <div class="home-card-desc">Track things to avoid &amp; improve</div>
+        <h3>Bad Actions</h3>
       </a>
 
       <a href="{{ url_for('money') }}" class="home-card money-card">
         <div class="home-card-icon">💰</div>
-        <div class="home-card-title">My Money</div>
-        <div class="home-card-desc">Save, spend &amp; donate wisely</div>
+        <h3>Money</h3>
       </a>
+    </section>
 
-    </div>
+    <section class="steps-grid" aria-label="How it works">
+      <article class="step-card">
+        <div class="step-number">1</div>
+        <h3>Pick Task</h3>
+      </article>
+
+      <article class="step-card">
+        <div class="step-number">2</div>
+        <h3>Earn Stars</h3>
+      </article>
+
+      <article class="step-card">
+        <div class="step-number">3</div>
+        <h3>Grow</h3>
+      </article>
+    </section>
   </main>
 </body>
 </html>

@@ -32,7 +32,7 @@
 
     <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
       <h2 style="margin:0;">⭐ Good Actions</h2>
-      <span class="points-banner" style="margin:0;"><span class="icon">⭐</span> {{ current_user.points }} Points</span>
+      <span class="points-banner" style="margin:0;"><span class="icon">⭐</span> {{ (target_user.points if target_user else current_user.points) }} Points</span>
     </div>
 
     <div class="two-col-layout">
@@ -82,15 +82,23 @@
                   <strong>{{ reward.name }}</strong>
                   <span class="action-badge gold-badge">{{ reward.points_threshold }} pts needed</span>
                   {% if reward.description %}<p class="action-desc">{{ reward.description }}</p>{% endif %}
-                  {% if current_user.points >= reward.points_threshold %}
+                  <p class="action-desc">Cost to redeem: {{ reward.points_cost }} pts</p>
+                  {% if (target_user.points if target_user else current_user.points) >= reward.points_threshold %}
                     <span class="badge badge-success">🎉 Unlocked!</span>
                   {% else %}
                     <span style="font-size:0.8rem;color:#888;">
-                      {{ reward.points_threshold - current_user.points }} pts to go
+                      {{ reward.points_threshold - (target_user.points if target_user else current_user.points) }} pts to go
                     </span>
                   {% endif %}
                 </div>
                 <div class="action-btns">
+                  {% if (target_user.points if target_user else current_user.points) >= reward.points_threshold and not reward.used_by_child(target_user.id if target_user else current_user.id) %}
+                  <form method="POST" action="{{ url_for('use_reward_route', reward_id=reward.id) }}"
+                        style="margin:0;">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-success">🎁 Redeem</button>
+                  </form>
+                  {% endif %}
                   <form method="POST" action="{{ url_for('delete_reward_route', reward_id=reward.id) }}"
                         style="margin:0;" onsubmit="return confirm('Remove reward?');">
                     {{ form.hidden_tag() }}
@@ -161,6 +169,10 @@
             <div class="form-group">
               {{ reward_form.points_threshold.label(class="form-control-label") }}
               {{ reward_form.points_threshold(class="form-control", placeholder="e.g. 20") }}
+            </div>
+            <div class="form-group">
+              {{ reward_form.points_cost.label(class="form-control-label") }}
+              {{ reward_form.points_cost(class="form-control", placeholder="Leave blank to use the threshold") }}
             </div>
             {{ reward_form.submit(class="btn btn-warning btn-block") }}
           </form>

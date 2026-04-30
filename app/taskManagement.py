@@ -11,7 +11,8 @@ def create_task(title, description, date, time,
                 recurrence_type='none',
                 recurrence_hours=None,
                 recurrence_days=None,
-                recurrence_end=None):
+                recurrence_end=None,
+                user_id=None):
     """
     Create a task. recurrence_days should be a list of int weekday numbers [0-6]
     for 'weekly' recurrence, or None for other types.
@@ -29,6 +30,8 @@ def create_task(title, description, date, time,
     else:
         task_datetime = date
 
+    owner_id = user_id if user_id is not None else current_user.id
+
     new_task = Task(
         title=title,
         description=description,
@@ -38,14 +41,14 @@ def create_task(title, description, date, time,
         recurrence_hours=recurrence_hours if recurrence_type == 'hourly' else None,
         recurrence_days=days_str,
         recurrence_end=recurrence_end,
-        user_id=current_user.id
+        user_id=owner_id
     )
     db.session.add(new_task)
     db.session.commit()
     return new_task
 
 
-def get_tasks_for_date(target_date):
+def get_tasks_for_date(target_date, user_id=None):
     """
     Return a list of dicts for all tasks that appear on target_date for
     the current user.
@@ -55,7 +58,8 @@ def get_tasks_for_date(target_date):
         completed     – bool
         occurrence_id – TaskOccurrence.id (None for one-time tasks)
     """
-    all_tasks = Task.query.filter_by(user_id=current_user.id).all()
+    owner_id = user_id if user_id is not None else current_user.id
+    all_tasks = Task.query.filter_by(user_id=owner_id).all()
     result = []
 
     for task in all_tasks:
@@ -83,18 +87,19 @@ def get_tasks_for_date(target_date):
     return result
 
 
-def get_tasksList_for_user():
+def get_tasksList_for_user(user_id=None):
     """Legacy helper — returns today's task dicts."""
-    return get_tasks_for_date(date_type.today())
+    return get_tasks_for_date(date_type.today(), user_id=user_id)
 
 
-def toggle_task_for_date(task_id, target_date):
+def toggle_task_for_date(task_id, target_date, user_id=None):
     """
     Toggle completion for a task on a specific date.
     Returns new completed state (bool) or None on error.
     """
+    owner_id = user_id if user_id is not None else current_user.id
     task = Task.query.get(task_id)
-    if not task or task.user_id != current_user.id:
+    if not task or task.user_id != owner_id:
         return None
 
     if task.is_recurring():
@@ -119,9 +124,11 @@ def toggle_task_for_date(task_id, target_date):
 
 def update_task(task_id, title=None, description=None, completion_status=None,
                 recurrence_type=None, recurrence_hours=None,
-                recurrence_days=None, recurrence_end=None):
+                recurrence_days=None, recurrence_end=None,
+                user_id=None):
+    owner_id = user_id if user_id is not None else current_user.id
     task = Task.query.get(task_id)
-    if not task or task.user_id != current_user.id:
+    if not task or task.user_id != owner_id:
         return None
     if title is not None:
         task.title = title
@@ -144,9 +151,10 @@ def update_task(task_id, title=None, description=None, completion_status=None,
     return task
 
 
-def delete_task(task_id):
+def delete_task(task_id, user_id=None):
+    owner_id = user_id if user_id is not None else current_user.id
     task = Task.query.get(task_id)
-    if task and task.user_id == current_user.id:
+    if task and task.user_id == owner_id:
         db.session.delete(task)
         db.session.commit()
         return True

@@ -63,7 +63,7 @@ class Task(db.Model):
 
     # Optional end date — recurrence stops after this date (NULL = forever)
     recurrence_end = db.Column(db.DateTime, nullable=True)
-
+    image_filename = db.Column(db.String(255), nullable=True)
     # Individual completion records for recurring tasks
     occurrences = db.relationship('TaskOccurrence', backref='task', lazy=True,
                                   cascade='all, delete-orphan')
@@ -160,16 +160,28 @@ class Reward(db.Model):
     parent_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255), default="")
-    points_threshold = db.Column(db.Integer, nullable=False)
 
-    unlocked_by = db.relationship('RewardUnlock', backref='reward', lazy=True)
+    # Points needed to unlock this reward
+    points_threshold = db.Column(db.Integer, nullable=False)
+    # Points spent when the reward is used
+    points_cost = db.Column(db.Integer, nullable=False, default=0)
+
+    used_by = db.relationship('RewardUnlock', backref='reward', lazy=True,
+                              cascade='all, delete-orphan')
 
     def unlocked_for(self, child_id):
-        return any(u.child_id == child_id for u in self.unlocked_by)
+        return any(u.child_id == child_id for u in self.used_by)
+
+    def used_by_child(self, child_id):
+        return any(u.child_id == child_id and u.used for u in self.used_by)
 
     def unlock(self, child_id):
-        unlock = RewardUnlock(reward_id=self.id, child_id=child_id)
-        db.session.add(unlock)
+        if not self.unlocked_for(child_id):
+            unlock = RewardUnlock(reward_id=self.id, child_id=child_id)
+            db.session.add(unlock)
+
+    def __repr__(self):
+        return f"Reward('{self.name}', threshold={self.points_threshold})"
 
 
 class RewardUnlock(db.Model):
@@ -179,6 +191,13 @@ class RewardUnlock(db.Model):
     reward_id = db.Column(db.Integer, db.ForeignKey('reward.id'), nullable=False)
     child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     unlocked_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Has the child actually redeemed/used this reward?
+    used = db.Column(db.Boolean, nullable=False, default=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"RewardUnlock(reward={self.reward_id}, child={self.child_id}, used={self.used})"
 
 
 # ── Bad Actions ───────────────────────────────────────────────────────────────
@@ -200,7 +219,18 @@ class Punishment(db.Model):
     parent_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(255), default="")
+
+    # Crosses threshold that triggers this punishment
     crosses_threshold = db.Column(db.Integer, nullable=False)
+    # Crosses removed when parent marks the punishment as served
+    crosses_cost = db.Column(db.Integer, nullable=False, default=0)
+
+    # Track whether punishment has been applied to the child
+    used = db.Column(db.Boolean, nullable=False, default=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"Punishment('{self.name}', at {self.crosses_threshold} crosses)"
 
 
 # ── Money Organizer ───────────────────────────────────────────────────────────
@@ -211,23 +241,35 @@ class MoneyAccount(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     child_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
 
+    # Master balance = all money received for this child
     total_balance = db.Column(db.Float, nullable=False, default=0.0)
-    saving_balance = db.Column(db.Float, nullable=False, default=0.0)
+
+    # Money not yet assigned to a jar
+    unassigned_balance = db.Column(db.Float, nullable=False, default=0.0)
+
+    # The three jars — used once the child assigns money manually
     spending_balance = db.Column(db.Float, nullable=False, default=0.0)
+    saving_balance = db.Column(db.Float, nullable=False, default=0.0)
     donating_balance = db.Column(db.Float, nullable=False, default=0.0)
 
-    saving_pct = db.Column(db.Integer, nullable=False, default=50)
-    spending_pct = db.Column(db.Integer, nullable=False, default=40)
-    donating_pct = db.Column(db.Integer, nullable=False, default=10)
-
     goals = db.relationship('SavingsGoal', backref='account', lazy=True)
+    transactions = db.relationship('MoneyTransaction',
+                                   foreign_keys='MoneyTransaction.account_id',
+                                   backref='owner', lazy=True)
+
+    def __repr__(self):
+        return (f"MoneyAccount(child={self.child_id}, "
+                f"total={self.total_balance:.2f}, "
+                f"unassigned={self.unassigned_balance:.2f})")
 
 
 class MoneyTransaction(db.Model):
     __tablename__ = 'money_transaction'
 
     id = db.Column(db.Integer, primary_key=True)
+    # Link to the child user (for convenience) and to the money account
     child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    account_id = db.Column(db.Integer, db.ForeignKey('money_account.id'), nullable=True)
     amount = db.Column(db.Float, nullable=False)
     transaction_type = db.Column(db.String(20), nullable=False)
     note = db.Column(db.String(255), default="")
@@ -242,6 +284,7 @@ class SavingsGoal(db.Model):
     account_id = db.Column(db.Integer, db.ForeignKey('money_account.id'), nullable=True)
     name = db.Column(db.String(100), nullable=False)
     target_amount = db.Column(db.Float, nullable=False)
+    current_amount = db.Column(db.Float, nullable=False, default=0.0)
     reward_description = db.Column(db.String(255), default="")
     achieved = db.Column(db.Boolean, nullable=False, default=False)
 
@@ -301,3 +344,177 @@ class TaskCheckbox(db.Model):
     def __repr__(self):
         return (f"TaskCheckbox(sheet={self.sheet_id}, "
                 f"task={self.task_id}, pos=({self.cx},{self.cy}))")
+
+
+
+
+class PresetTask(db.Model):
+    """
+    Built-in common tasks that parents can one-click add to their child's list.
+    Populated once via seed_presets() below — not user-created.
+    """
+    __tablename__ = 'preset_task'
+ 
+    id              = db.Column(db.Integer, primary_key=True)
+    title           = db.Column(db.String(100), nullable=False)
+    title_ar        = db.Column(db.String(100), nullable=True)   # Arabic title
+    description     = db.Column(db.String(255), nullable=False, default='')
+    description_ar  = db.Column(db.String(255), nullable=True)
+    emoji           = db.Column(db.String(10),  nullable=False, default='📌')
+    # Category for grouping in the UI
+    category        = db.Column(db.String(50),  nullable=False, default='general')
+    # Optional image bundled with the app (stored in static/preset_images/)
+    image_filename  = db.Column(db.String(255), nullable=True)
+    # Suggested recurrence so parents get sensible defaults
+    default_recurrence = db.Column(db.String(20), nullable=False, default='daily')
+ 
+    def __repr__(self):
+        return f"PresetTask('{self.title}')"
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# Seed function — call once from Flask shell or __init__.py
+# ─────────────────────────────────────────────────────────────
+ 
+PRESET_DATA = [
+    # ── Morning routine ───────────────────────────────────────
+    dict(title='Brush Teeth',       title_ar='تنظيف الأسنان',
+         description='Morning and evening', description_ar='صباحاً ومساءً',
+         emoji='🪥', category='morning', default_recurrence='daily',
+         image_filename='preset_brush_teeth.png'),
+ 
+    dict(title='Wash Face',         title_ar='غسل الوجه',
+         description='Use soap and rinse well', description_ar='استخدم الصابون واشطف جيداً',
+         emoji='🧼', category='morning', default_recurrence='daily',
+         image_filename='preset_wash_face.png'),
+ 
+    dict(title='Make Bed',          title_ar='ترتيب السرير',
+         description='Straighten the sheets and pillow', description_ar='رتّب الملاءة والوسادة',
+         emoji='🛏️', category='morning', default_recurrence='daily',
+         image_filename='preset_make_bed.png'),
+ 
+    dict(title='Get Dressed',       title_ar='ارتداء الملابس',
+         description='Put on clean clothes', description_ar='البس ملابس نظيفة',
+         emoji='👕', category='morning', default_recurrence='daily',
+         image_filename='preset_get_dressed.png'),
+ 
+    dict(title='Eat Breakfast',     title_ar='تناول الفطور',
+         description='Eat a healthy breakfast', description_ar='تناول فطوراً صحياً',
+         emoji='🥣', category='morning', default_recurrence='daily',
+         image_filename='preset_breakfast.png'),
+ 
+    # ── School ────────────────────────────────────────────────
+    dict(title='Do Homework',       title_ar='إنجاز الواجبات',
+         description='Finish all school homework', description_ar='أنهِ جميع الواجبات المدرسية',
+         emoji='📚', category='school', default_recurrence='weekly',
+         image_filename='preset_homework.png'),
+ 
+    dict(title='Pack School Bag',   title_ar='تحضير حقيبة المدرسة',
+         description='Pack everything for tomorrow', description_ar='جهّز كل شيء للغد',
+         emoji='🎒', category='school', default_recurrence='weekly',
+         image_filename='preset_school_bag.png'),
+ 
+    dict(title='Read for 20 mins',  title_ar='القراءة 20 دقيقة',
+         description='Read a book of your choice', description_ar='اقرأ كتاباً تحبه',
+         emoji='📖', category='school', default_recurrence='daily',
+         image_filename='preset_reading.png'),
+ 
+    # ── Evening ───────────────────────────────────────────────
+    dict(title='Tidy Room',         title_ar='ترتيب الغرفة',
+         description='Put toys and things away', description_ar='رتّب ألعابك وأغراضك',
+         emoji='🧹', category='evening', default_recurrence='daily',
+         image_filename='preset_tidy_room.png'),
+ 
+    dict(title='Bath / Shower',     title_ar='الاستحمام',
+         description='Wash hair and body', description_ar='اغسل شعرك وجسمك',
+         emoji='🚿', category='evening', default_recurrence='daily',
+         image_filename='preset_shower.png'),
+ 
+    dict(title='Prepare Clothes',   title_ar='تجهيز ملابس الغد',
+         description='Lay out clothes for tomorrow', description_ar='جهّز ملابسك للغد',
+         emoji='👗', category='evening', default_recurrence='daily',
+         image_filename='preset_clothes.png'),
+ 
+    # ── Health ────────────────────────────────────────────────
+    dict(title='Drink Water',       title_ar='شرب الماء',
+         description='Drink 6–8 glasses today', description_ar='اشرب ٦–٨ أكواب اليوم',
+         emoji='💧', category='health', default_recurrence='daily',
+         image_filename='preset_water.png'),
+ 
+    dict(title='Exercise / Play',   title_ar='التمرين / اللعب',
+         description='30 minutes of physical activity', description_ar='٣٠ دقيقة نشاط بدني',
+         emoji='⚽', category='health', default_recurrence='daily',
+         image_filename='preset_exercise.png'),
+ 
+    # ── Chores ────────────────────────────────────────────────
+    dict(title='Set the Table',     title_ar='تجهيز الطاولة',
+         description='Set plates and cutlery', description_ar='ضع الأطباق والأدوات',
+         emoji='🍽️', category='chores', default_recurrence='daily',
+         image_filename='preset_set_table.png'),
+ 
+    dict(title='Help with Dishes',  title_ar='مساعدة في الأطباق',
+         description='Rinse or dry the dishes', description_ar='اشطف أو جفف الأطباق',
+         emoji='🧽', category='chores', default_recurrence='daily',
+         image_filename='preset_dishes.png'),
+ 
+    dict(title='Feed the Pet',      title_ar='إطعام الحيوان الأليف',
+         description='Give food and fresh water', description_ar='قدّم طعاماً وماءً نظيفاً',
+         emoji='🐾', category='chores', default_recurrence='daily',
+         image_filename='preset_pet.png'),
+ 
+    dict(title='Take out Trash',    title_ar='إخراج القمامة',
+         description='Bring bin to the door', description_ar='أخرج سلة المهملات',
+         emoji='🗑️', category='chores', default_recurrence='weekly',
+         image_filename='preset_trash.png'),
+ 
+    # ── Wellbeing ─────────────────────────────────────────────
+    dict(title='Pray / Meditate',   title_ar='الصلاة / التأمل',
+         description='Quiet time for reflection', description_ar='وقت هادئ للتأمل',
+         emoji='🤲', category='wellbeing', default_recurrence='daily',
+         image_filename='preset_pray.png'),
+ 
+    dict(title='Say Thank You',     title_ar='قول شكراً',
+         description='Thank someone today', description_ar='اشكر شخصاً ما اليوم',
+         emoji='🙏', category='wellbeing', default_recurrence='daily',
+         image_filename='preset_thanks.png'),
+ 
+    dict(title='Screen-free Time',  title_ar='وقت بدون شاشات',
+         description='1 hour without any screens', description_ar='ساعة بدون أي شاشات',
+         emoji='📵', category='wellbeing', default_recurrence='daily',
+         image_filename='preset_no_screen.png'),
+]
+ 
+CATEGORY_LABELS = {
+    'morning':   ('🌅', 'Morning Routine',  'الروتين الصباحي'),
+    'school':    ('📚', 'School',           'المدرسة'),
+    'evening':   ('🌙', 'Evening Routine',  'الروتين المسائي'),
+    'health':    ('💪', 'Health',           'الصحة'),
+    'chores':    ('🏠', 'Chores',           'الأعمال المنزلية'),
+    'wellbeing': ('🌟', 'Wellbeing',        'الرفاهية'),
+}
+ 
+ 
+def seed_presets():
+    """
+    Populate the preset_task table.
+    Safe to call multiple times — skips presets that already exist.
+ 
+    Call from Flask shell:
+        from app.models import seed_presets
+        seed_presets()
+ 
+    Or add to __init__.py inside the app_context block:
+        from app.models import seed_presets
+        seed_presets()
+    """
+    from app import db
+    added = 0
+    for data in PRESET_DATA:
+        exists = PresetTask.query.filter_by(title=data['title']).first()
+        if not exists:
+            db.session.add(PresetTask(**data))
+            added += 1
+    db.session.commit()
+    print(f"[seed_presets] Added {added} preset tasks.")
+    return added
+ 
