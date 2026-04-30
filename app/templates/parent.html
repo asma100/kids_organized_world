@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Parent Dashboard - KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+    <nav>
+      <a href="{{ url_for('home') }}">Home</a>
+      <a href="{{ url_for('logout') }}">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h2>Parent Dashboard</h2>
+    <p>Create and manage child profiles below. Click a child to view their home page.</p>
+
+    {% if selected_child %}
+      <div class="alert alert-success">
+        Active child: <strong>{{ selected_child.username }}</strong>
+        <a style="margin-left:1rem;" href="{{ url_for('home') }}">Open Home</a>
+        <a style="margin-left:1rem;" href="{{ url_for('taskList') }}">Tasks</a>
+        <a style="margin-left:1rem;" href="{{ url_for('money') }}">Money</a>
+      </div>
+    {% endif %}
+
+    <section style="display:flex; gap:2rem;">
+      <div style="flex:1;">
+        <h3>Your Kids</h3>
+        {% if kids %}
+          <ul>
+            {% for k in kids %}
+              <li style="margin-bottom:0.5rem;">
+                <strong>{{ k.username }}</strong>
+                <a style="margin-left:1rem;" href="{{ url_for('parent_select_child', child_id=k.id) }}">Select</a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No child profiles yet.</p>
+        {% endif %}
+      </div>
+
+      <div style="width:320px;">
+        <h3>Create Child</h3>
+        <form method="POST" action="{{ url_for('parent') }}">
+          {{ form.hidden_tag() }}
+          <div class="form-group">
+            {{ form.username.label(class="form-control-label") }}
+            {{ form.username(class="form-control") }}
+          </div>
+          <div class="form-group">
+            {{ form.email.label(class="form-control-label") }}
+            {{ form.email(class="form-control") }}
+          </div>
+          {{ form.submit(class="btn btn-primary") }}
+        </form>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

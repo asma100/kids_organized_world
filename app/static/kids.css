@@ -295,7 +295,7 @@ h4 {
 /* ── MONEY BUCKETS ── */
 .money-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
   margin: 1.5rem 0;
 }
@@ -308,6 +308,7 @@ h4 {
   text-align: center;
 }
 
+.money-bucket.unassigned { background: var(--cloud); }
 .money-bucket.saving   { background: var(--mint); }
 .money-bucket.spending { background: var(--peach); }
 .money-bucket.donating { background: var(--lavender); color: var(--cloud); }
@@ -321,6 +322,11 @@ h4 {
 .money-bucket .bucket-amount {
   font-family: 'Fredoka One', cursive;
   font-size: 1.6rem;
+}
+
+.money-bucket .bucket-hint {
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 /* ── ALERTS ── */

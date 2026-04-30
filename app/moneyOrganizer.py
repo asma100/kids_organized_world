@@ -22,12 +22,10 @@ def get_or_create_account(child_id):
         account = MoneyAccount(
             child_id=child_id,
             total_balance=0.0,
+            unassigned_balance=0.0,
             saving_balance=0.0,
             spending_balance=0.0,
             donating_balance=0.0,
-            saving_pct=DEFAULT_CATEGORIES["saving"],
-            spending_pct=DEFAULT_CATEGORIES["spending"],
-            donating_pct=DEFAULT_CATEGORIES["donating"],
         )
         db.session.add(account)
         db.session.commit()
@@ -37,25 +35,19 @@ def get_or_create_account(child_id):
 def add_money(child_id, amount, note=""):
     """
     Add money to a child's account.
-    Automatically splits it into saving / spending / donating buckets
-    based on the child's configured percentages.
+    New money starts in the unassigned balance so the child can sort it later.
     """
     if amount <= 0:
         return None
 
     account = get_or_create_account(child_id)
 
-    saving_share = round(amount * account.saving_pct / 100, 2)
-    spending_share = round(amount * account.spending_pct / 100, 2)
-    donating_share = round(amount - saving_share - spending_share, 2)  # remainder avoids rounding gaps
-
     account.total_balance += amount
-    account.saving_balance += saving_share
-    account.spending_balance += spending_share
-    account.donating_balance += donating_share
+    account.unassigned_balance += amount
 
     transaction = MoneyTransaction(
         child_id=child_id,
+        account_id=account.id,
         amount=amount,
         transaction_type="income",
         note=note,
@@ -85,6 +77,7 @@ def spend_money(child_id, amount, note=""):
 
     transaction = MoneyTransaction(
         child_id=child_id,
+        account_id=account.id,
         amount=-amount,
         transaction_type="expense",
         note=note,
@@ -109,6 +102,7 @@ def donate_money(child_id, amount, note=""):
 
     transaction = MoneyTransaction(
         child_id=child_id,
+        account_id=account.id,
         amount=-amount,
         transaction_type="donation",
         note=note,
@@ -120,14 +114,24 @@ def donate_money(child_id, amount, note=""):
 
 
 def set_category_percentages(child_id, saving_pct, spending_pct, donating_pct):
-    """Update the auto-split percentages for a child's account."""
+    """Distribute the child's unassigned money into the three jars."""
     if saving_pct + spending_pct + donating_pct != 100:
         return None  # must add up to 100%
 
     account = get_or_create_account(child_id)
-    account.saving_pct = saving_pct
-    account.spending_pct = spending_pct
-    account.donating_pct = donating_pct
+
+    if account.unassigned_balance <= 0:
+        return account
+
+    unassigned = account.unassigned_balance
+    saving_share = round(unassigned * saving_pct / 100, 2)
+    spending_share = round(unassigned * spending_pct / 100, 2)
+    donating_share = round(unassigned - saving_share - spending_share, 2)
+
+    account.saving_balance += saving_share
+    account.spending_balance += spending_share
+    account.donating_balance += donating_share
+    account.unassigned_balance = 0.0
     db.session.commit()
     return account
 
@@ -138,12 +142,47 @@ def create_savings_goal(child_id, name, target_amount, reward_description=""):
         child_id=child_id,
         name=name,
         target_amount=target_amount,
+        current_amount=0.0,
         reward_description=reward_description,
         achieved=False
     )
     db.session.add(goal)
     db.session.commit()
     return goal
+
+
+def deposit_to_goal(child_id, goal_id, amount):
+    """Move money from the Saving jar into a specific goal jar."""
+    if amount <= 0:
+        return None, "Amount must be greater than 0."
+
+    account = get_or_create_account(child_id)
+    goal = SavingsGoal.query.filter_by(id=goal_id, child_id=child_id).first()
+    if not goal:
+        return None, "Goal not found."
+
+    if goal.achieved:
+        return None, "Goal already achieved."
+
+    remaining = max(goal.target_amount - (goal.current_amount or 0.0), 0.0)
+    if remaining <= 0:
+        goal.achieved = True
+        db.session.commit()
+        return goal, "Goal achieved!"
+
+    if amount > remaining:
+        return None, "That is more than this goal needs."
+
+    if account.saving_balance < amount:
+        return None, "Not enough money in Saving."
+
+    account.saving_balance -= amount
+    goal.current_amount = (goal.current_amount or 0.0) + amount
+    if goal.current_amount >= goal.target_amount:
+        goal.achieved = True
+
+    db.session.commit()
+    return goal, "Added money to goal!"
 
 
 def get_savings_goals(child_id):
@@ -159,6 +198,6 @@ def _check_savings_goal(child_id, account):
     """Mark any unachieved savings goals as achieved if target is reached."""
     goals = SavingsGoal.query.filter_by(child_id=child_id, achieved=False).all()
     for goal in goals:
-        if account.saving_balance >= goal.target_amount:
+        if (goal.current_amount or 0.0) >= goal.target_amount:
             goal.achieved = True
             db.session.commit()

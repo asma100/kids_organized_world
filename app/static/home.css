@@ -1,0 +1,274 @@
+:root {
+  --blue: #7ec8e3;
+  --yellow: #ffe066;
+  --green: #9ee6a0;
+  --coral: #ff8a8a;
+  --purple: #cdb4db;
+  --bg: #f8fafc;
+  --text: #333333;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.home-page {
+  margin: 0;
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.site-header {
+  background: #ffffff;
+  padding: 12px 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.navbar-brand {
+  font-weight: 800;
+  font-size: 1.4rem;
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.top-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.top-nav a {
+  margin: 0 6px;
+  text-decoration: none;
+  font-weight: 600;
+  color: #555555;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.top-nav a:hover {
+  color: var(--blue);
+  background: #f1f8fb;
+}
+
+.home-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.alert {
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+
+.alert-success {
+  background: #dff7e2;
+  color: #245a2a;
+}
+
+.alert-danger {
+  background: #ffe1e1;
+  color: #7a2222;
+}
+
+.alert-warning {
+  background: #fff5cf;
+  color: #6e5500;
+}
+
+.alert-info {
+  background: #e4f4fb;
+  color: #1a5573;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  padding: 20px 4px 30px;
+  align-items: center;
+}
+
+.hero-title {
+  font-size: clamp(2rem, 5vw, 2.6rem);
+  font-weight: 800;
+  margin: 0;
+}
+
+.hero-text {
+  margin: 16px 0;
+  font-size: 1.1rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.btn {
+  padding: 12px 20px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 700;
+  display: inline-block;
+}
+
+.btn-primary {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.btn-success {
+  background: var(--green);
+  color: #333333;
+}
+
+.btn-warning {
+  background: var(--yellow);
+  color: #333333;
+}
+
+.hero img {
+  width: 100%;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.score-grid {
+  display: flex;
+  gap: 20px;
+  padding: 4px 0 20px;
+}
+
+.score-card {
+  flex: 1;
+  padding: 20px;
+  border-radius: 16px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.score-card-points {
+  border-left: 6px solid var(--green);
+}
+
+.score-card-crosses {
+  border-left: 6px solid var(--coral);
+}
+
+.score-icon {
+  font-size: 1.8rem;
+}
+
+.score-label {
+  margin: 0;
+  font-weight: 600;
+}
+
+.score-value {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  padding: 0 0 20px;
+}
+
+.home-card {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 16px;
+  text-align: center;
+  text-decoration: none;
+  color: #333333;
+  transition: transform 0.2s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.home-card:hover {
+  transform: translateY(-5px);
+}
+
+.home-card-icon {
+  font-size: 2rem;
+}
+
+.home-card h3 {
+  margin: 10px 0 0;
+}
+
+.tasks-card {
+  border-top: 5px solid var(--blue);
+}
+
+.good-card {
+  border-top: 5px solid var(--green);
+}
+
+.bad-card {
+  border-top: 5px solid var(--coral);
+}
+
+.money-card {
+  border-top: 5px solid var(--yellow);
+}
+
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+  padding: 0 0 20px;
+}
+
+.step-card {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.step-number {
+  background: var(--purple);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding-top: 10px;
+  }
+
+  .score-grid {
+    flex-direction: column;
+  }
+
+  .top-nav {
+    width: 100%;
+  }
+}

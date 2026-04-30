@@ -1,0 +1,86 @@
+<!--
+════════════════════════════════════════════════════════
+ADD TO createtask.html
+════════════════════════════════════════════════════════
+
+1. The <form> tag needs enctype for file uploads. Change it to:
+   <form method="POST" action="" enctype="multipart/form-data">
+
+2. Add the image upload block AFTER the description field and
+   BEFORE the recurrence selector:
+────────────────────────────────────────────────────────
+-->
+
+<!-- Image upload field — paste after description, before recurrence -->
+<div class="form-group">
+  <label class="form-control-label">
+    🖼️ Task Image <span style="font-weight:400; color:#888;">(optional — helps kids who can't read yet)</span>
+  </label>
+
+  <div class="image-upload-zone" id="img-zone"
+       onclick="document.getElementById('task-image-input').click()"
+       ondragover="event.preventDefault(); this.classList.add('drag-over')"
+       ondragleave="this.classList.remove('drag-over')"
+       ondrop="handleImgDrop(event)">
+    <span style="font-size:2rem;">🖼️</span>
+    <p style="font-weight:700; margin:0.3rem 0 0;">Tap to choose a picture</p>
+    <p style="font-size:0.8rem; color:#888;">or drag &amp; drop — PNG, JPG, GIF, WebP</p>
+    {{ form.image(id="task-image-input", style="display:none", onchange="previewImg(this)") }}
+  </div>
+
+  <img id="img-preview" style="display:none; max-width:120px; max-height:120px;
+       border:var(--border); border-radius:var(--radius-sm);
+       box-shadow:var(--shadow); margin-top:0.6rem; object-fit:cover;">
+</div>
+
+<!--
+════════════════════════════════════════════════════════
+ADD TO createtask.html — at the bottom before </body>
+Add this <style> block and <script> block:
+════════════════════════════════════════════════════════
+-->
+<style>
+  .image-upload-zone {
+    border: 3px dashed var(--sky);
+    border-radius: var(--radius);
+    padding: 1.2rem;
+    text-align: center;
+    background: #f0fbff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .image-upload-zone:hover,
+  .image-upload-zone.drag-over {
+    background: #d0f0ff;
+    border-color: var(--ink);
+    box-shadow: var(--shadow);
+  }
+</style>
+
+<script>
+  // (add inside the existing <script> block if one already exists)
+  function previewImg(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById('img-preview');
+      img.src = e.target.result;
+      img.style.display = 'block';
+      document.getElementById('img-zone').querySelector('p').textContent = file.name;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleImgDrop(event) {
+    event.preventDefault();
+    document.getElementById('img-zone').classList.remove('drag-over');
+    const file = event.dataTransfer.files[0];
+    if (!file) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    const input = document.getElementById('task-image-input');
+    input.files = dt.files;
+    previewImg(input);
+  }
+</script>

@@ -32,7 +32,7 @@
 
     <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
       <h2 style="margin:0;">❌ Bad Actions</h2>
-      <span class="crosses-banner" style="margin:0;"><span class="icon">❌</span> {{ current_user.crosses }} Crosses</span>
+      <span class="crosses-banner" style="margin:0;"><span class="icon">❌</span> {{ (target_user.crosses if target_user else current_user.crosses) }} Crosses</span>
     </div>
 
     <div class="two-col-layout">
@@ -82,11 +82,19 @@
                   <strong>{{ p.name }}</strong>
                   <span class="action-badge bad-badge">at {{ p.crosses_threshold }} ❌</span>
                   {% if p.description %}<p class="action-desc">{{ p.description }}</p>{% endif %}
-                  {% if current_user.crosses >= p.crosses_threshold %}
+                  <p class="action-desc">Cost to serve: {{ p.crosses_cost }} ❌</p>
+                  {% if (target_user.crosses if target_user else current_user.crosses) >= p.crosses_threshold %}
                     <span class="badge badge-danger">⚠️ Active!</span>
                   {% endif %}
                 </div>
                 <div class="action-btns">
+                  {% if (target_user.crosses if target_user else current_user.crosses) >= p.crosses_threshold and not p.used %}
+                  <form method="POST" action="{{ url_for('serve_punishment_route', punishment_id=p.id) }}"
+                        style="margin:0;">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-warning">✅ Serve</button>
+                  </form>
+                  {% endif %}
                   <form method="POST" action="{{ url_for('delete_punishment_route', punishment_id=p.id) }}"
                         style="margin:0;" onsubmit="return confirm('Remove?');">
                     {{ form.hidden_tag() }}
@@ -157,6 +165,10 @@
             <div class="form-group">
               {{ punishment_form.crosses_threshold.label(class="form-control-label") }}
               {{ punishment_form.crosses_threshold(class="form-control", placeholder="e.g. 5") }}
+            </div>
+            <div class="form-group">
+              {{ punishment_form.crosses_cost.label(class="form-control-label") }}
+              {{ punishment_form.crosses_cost(class="form-control", placeholder="Leave blank to use the threshold") }}
             </div>
             {{ punishment_form.submit(class="btn btn-warning btn-block") }}
           </form>
