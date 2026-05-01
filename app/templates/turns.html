@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turns – KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+        <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
+        <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
+        <a class="nav-item" href="{{ url_for('money') }}">My Money</a>
+        <a class="nav-item" href="{{ url_for('turns') }}">Turns</a>
+      </div>
+      <div class="navbar-nav">
+        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+
+    <h2>🔁 Turns</h2>
+
+    <div class="two-col-layout">
+      <div>
+        <div class="section-card form-card">
+          <h3 class="section-title">➕ Create Turn Group</h3>
+          <form method="POST" action="{{ url_for('turns') }}">
+            {{ group_form.hidden_tag() }}
+            <div class="form-group">
+              {{ group_form.name.label(class="form-control-label") }}
+              {{ group_form.name(class="form-control", placeholder="TV", maxlength="80") }}
+            </div>
+            <div class="form-group">
+              {{ group_form.turn_duration_min.label(class="form-control-label") }}
+              {{ group_form.turn_duration_min(class="form-control", placeholder="30") }}
+            </div>
+            <div class="form-group">
+              {{ group_form.daily_quota_min.label(class="form-control-label") }}
+              {{ group_form.daily_quota_min(class="form-control", placeholder="180") }}
+            </div>
+            {{ group_form.submit(class="btn btn-success btn-block") }}
+          </form>
+        </div>
+
+        <div class="section-card" style="margin-top:1rem;">
+          <h3 class="section-title">📦 Turn Groups</h3>
+          {% if groups %}
+            {% for g in groups %}
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:0.6rem 0; border-bottom:2px dashed #eee;">
+                <div>
+                  <div style="font-weight:900;">{{ g.name }}</div>
+                  <div style="font-size:0.85rem; font-weight:700; color:#666;">{{ g.turn_duration_min }} min turns • {{ g.daily_quota_min }} min/day</div>
+                </div>
+                <a class="btn btn-primary" href="{{ url_for('turns', group_id=g.id) }}">Open</a>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="empty-msg">No turn groups yet.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        {% if selected_group %}
+          <div class="section-card">
+            <h3 class="section-title">🎮 {{ selected_group.name }}</h3>
+            <div style="font-size:0.9rem; font-weight:800; margin-bottom:0.8rem;">
+              Today: {{ day.strftime('%Y-%m-%d') }}
+            </div>
+
+            <div class="section-card form-card" style="margin-bottom:1rem; border-color: var(--sky);">
+              <h3 class="section-title">👧 Add Kids</h3>
+              <form method="POST" action="{{ url_for('turns_add_member', group_id=selected_group.id) }}">
+                {{ add_member_form.hidden_tag() }}
+                <div class="form-group">
+                  {{ add_member_form.child_id.label(class="form-control-label") }}
+                  {{ add_member_form.child_id(class="form-control") }}
+                </div>
+                {{ add_member_form.submit(class="btn btn-primary btn-block") }}
+              </form>
+            </div>
+
+            {% if queue_data and queue_data.queue %}
+              {% set now_id = queue_data.now.id if queue_data.now else None %}
+              {% set next_id = queue_data.next.id if queue_data.next else None %}
+
+              <div style="display:grid; gap:0.8rem;">
+                {% for item in queue_data.queue %}
+                  {% set c = item.child %}
+                  {% set is_now = (c.id == now_id) %}
+                  {% set is_next = (c.id == next_id) %}
+
+                  <div class="turn-card" style="border-color: {{ 'var(--grass)' if is_now else ('var(--sun)' if is_next else 'var(--ink)') }};">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                      <div style="font-family:'Fredoka One', cursive; font-size:1.2rem;">
+                        {% if is_now %}🟢 NOW{% elif is_next %}🟡 NEXT{% else %}⚪{% endif %}
+                        {{ c.username }}
+                      </div>
+                      <div style="font-weight:900;">
+                        {{ item.remaining_min }} min
+                      </div>
+                    </div>
+                    <div style="font-size:0.85rem; font-weight:800; color:#666; margin-top:0.3rem;">
+                      Used: {{ item.used_min }} min / {{ selected_group.daily_quota_min }} min
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+
+              <form method="POST" action="{{ url_for('turns_next', group_id=selected_group.id) }}" style="margin-top:1rem;">
+                <button class="btn btn-success btn-block" type="submit">⏭ Next Turn ({{ selected_group.turn_duration_min }} min)</button>
+              </form>
+
+              <div style="margin-top:0.6rem; font-size:0.85rem; font-weight:800; color:#666;">
+                Each click uses {{ selected_group.turn_duration_min }} minutes from the current child.
+              </div>
+            {% else %}
+              <p class="empty-msg">Add kids to start the queue.</p>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="section-card">
+            <h3 class="section-title">⬅ Pick a Group</h3>
+            <p class="empty-msg">Create a group (TV, PlayStation, Front Seat), then open it.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </main>
+</body>
+</html>

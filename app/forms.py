@@ -201,3 +201,17 @@ class CreateChildForm(FlaskForm):
     username = StringField('Child Username', validators=[DataRequired(), Length(max=20)])
     email = StringField('Email (optional)', validators=[Optional(), Email()])
     submit = SubmitField('Create Child')
+
+
+# ── Turns (MVP) ───────────────────────────────────────────────────────────────
+
+class TurnGroupForm(FlaskForm):
+    name = StringField('Turn Group Name', validators=[DataRequired(), Length(max=80)])
+    turn_duration_min = IntegerField('Turn Duration (minutes)', validators=[DataRequired(), NumberRange(min=1, max=180)])
+    daily_quota_min = IntegerField('Daily Quota (minutes per child)', validators=[DataRequired(), NumberRange(min=1, max=24*60)])
+    submit = SubmitField('Create Turn Group')
+
+
+class TurnAddMemberForm(FlaskForm):
+    child_id = SelectField('Add Child', coerce=int, validators=[DataRequired()])
+    submit = SubmitField('Add')

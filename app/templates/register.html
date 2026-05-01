@@ -4,25 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Document</title>
-  <link rel="stylesheet" href="static/kids.css"> 
+    <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
 </head>
 <body>
-    <header class="site-header">
-        <div class="navbar-nav mr-auto">
-            <a class="nav-item " href="{{ url_for('home') }}">Home</a>
-          </div>
-          <!-- Navbar Right Side -->
-          <div class="navbar-nav">
-            {% if current_user.is_authenticated %}
-              <a class="nav-item nav-link" href="{{ url_for('account') }}">Account</a>
-              <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
-            {% else %}
-              <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
-              <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
-            {% endif %}
-          </div>
-        </nav>
-      </header>
+        <header class="site-header">
+            <nav>
+                <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+                <input class="nav-toggle" type="checkbox" id="nav-toggle">
+                <label class="nav-hamburger" for="nav-toggle" aria-label="Toggle navigation">☰</label>
+                <div class="navbar-nav mr-auto">
+                    <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+                    <a class="nav-item" href="{{ url_for('turns') }}">Turns</a>
+                </div>
+                <div class="navbar-nav">
+                    {% if current_user.is_authenticated %}
+                        <a class="nav-item nav-link" href="{{ url_for('account') }}">Account</a>
+                        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+                    {% else %}
+                        <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
+                        <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
+                    {% endif %}
+                </div>
+            </nav>
+        </header>
       <main role="main" class="container">
         <div class="row">
           <div class="col-md-8">

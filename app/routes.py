@@ -6,12 +6,14 @@ from app.forms import (RegistrationForm, LoginForm, CreateTaskForm,
                        RewardForm, PunishmentForm, AddMoneyForm,
                        SpendMoneyForm, SavingsGoalForm, SplitForm,
                        GoalDepositForm,
-                       CreateChildForm)
+                       CreateChildForm,
+                       TurnGroupForm, TurnAddMemberForm)
 from flask_login import login_user, current_user, logout_user, login_required
 from app.taskManagement import (create_task, get_tasks_for_date, update_task,
                                 delete_task, toggle_task_for_date, recurrence_label)
 from app.pointsys import total_task_points
-from app.models import User, Task, GoodAction, BadAction, Reward, Punishment
+from app.models import (User, Task, GoodAction, BadAction, Reward, Punishment,
+                        TurnGroup, TurnGroupMember, TurnDailyUsage, TurnDayState)
 import uuid
 from app.goodact import (create_good_action, get_good_actions, delete_good_action,
                          award_good_action, create_reward, get_rewards, delete_reward,
@@ -187,6 +189,263 @@ def parent_select_child(child_id):
     session['active_child_id'] = child.id
     flash(f'Now viewing {child.username}.', 'success')
     return redirect(url_for('home'))
+
+
+# ── TURN MANAGEMENT (MVP) ─────────────────────────────────────────────────────
+
+def _turn_day_key():
+    return date_type.today()
+
+
+def _days_since_epoch(day: date_type) -> int:
+    epoch = date_type(1970, 1, 1)
+    return (day - epoch).days
+
+
+def _get_group_members(group: TurnGroup):
+    members = (TurnGroupMember.query
+               .filter_by(group_id=group.id)
+               .order_by(TurnGroupMember.position.asc(), TurnGroupMember.id.asc())
+               .all())
+    return members
+
+
+def _get_or_init_turn_state(group: TurnGroup, day: date_type):
+    state = TurnDayState.query.filter_by(group_id=group.id, day=day).first()
+    members = _get_group_members(group)
+    if not state:
+        start_pos = 0
+        if members:
+            start_pos = (_days_since_epoch(day) + group.id) % len(members)
+            start_pos = members[start_pos].position
+        state = TurnDayState(group_id=group.id, day=day, current_position=start_pos)
+        db.session.add(state)
+        db.session.commit()
+    return state
+
+
+def _get_usage_minutes(group_id: int, child_id: int, day: date_type) -> int:
+    usage = TurnDailyUsage.query.filter_by(group_id=group_id, child_id=child_id, day=day).first()
+    return usage.used_min if usage else 0
+
+
+def _ensure_usage_row(group_id: int, child_id: int, day: date_type):
+    usage = TurnDailyUsage.query.filter_by(group_id=group_id, child_id=child_id, day=day).first()
+    if not usage:
+        usage = TurnDailyUsage(group_id=group_id, child_id=child_id, day=day, used_min=0)
+        db.session.add(usage)
+        db.session.commit()
+    return usage
+
+
+def _eligible_member_ids(group: TurnGroup, day: date_type):
+    members = _get_group_members(group)
+    eligible = []
+    for m in members:
+        used = _get_usage_minutes(group.id, m.child_id, day)
+        if used < group.daily_quota_min:
+            eligible.append(m.child_id)
+    return eligible
+
+
+def _queue_for_group(group: TurnGroup, day: date_type):
+    members = _get_group_members(group)
+    if not members:
+        return None
+
+    state = _get_or_init_turn_state(group, day)
+    eligible_ids = set(_eligible_member_ids(group, day))
+    if not eligible_ids:
+        return {
+            'now': None,
+            'next': None,
+            'queue': [],
+            'state': state,
+        }
+
+    # Find the current member by position, otherwise pick first eligible in order
+    ordered = members
+    # rotate list to start at current_position
+    start_index = 0
+    for i, m in enumerate(ordered):
+        if m.position == state.current_position:
+            start_index = i
+            break
+    rotated = ordered[start_index:] + ordered[:start_index]
+
+    # pick first eligible as NOW
+    now_member = next((m for m in rotated if m.child_id in eligible_ids), None)
+    if not now_member:
+        return {
+            'now': None,
+            'next': None,
+            'queue': [],
+            'state': state,
+        }
+
+    # build queue starting from NOW
+    now_index = rotated.index(now_member)
+    rotated_from_now = rotated[now_index:] + rotated[:now_index]
+    queue_members = [m for m in rotated_from_now if m.child_id in eligible_ids]
+
+    now_child = User.query.get(now_member.child_id)
+    next_child = User.query.get(queue_members[1].child_id) if len(queue_members) > 1 else None
+
+    queue = []
+    for m in queue_members:
+        child = User.query.get(m.child_id)
+        used = _get_usage_minutes(group.id, m.child_id, day)
+        remaining = max(group.daily_quota_min - used, 0)
+        queue.append({
+            'child': child,
+            'used_min': used,
+            'remaining_min': remaining,
+        })
+
+    return {
+        'now': now_child,
+        'next': next_child,
+        'queue': queue,
+        'state': state,
+    }
+
+
+@app.route("/turns", methods=["GET", "POST"])
+@login_required
+def turns():
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    day = _turn_day_key()
+    group_form = TurnGroupForm()
+
+    if group_form.validate_on_submit():
+        group = TurnGroup(
+            parent_id=current_user.id,
+            name=group_form.name.data,
+            turn_duration_min=group_form.turn_duration_min.data,
+            daily_quota_min=group_form.daily_quota_min.data,
+        )
+        db.session.add(group)
+        db.session.commit()
+        flash('Turn group created!', 'success')
+        return redirect(url_for('turns', group_id=group.id))
+
+    groups = TurnGroup.query.filter_by(parent_id=current_user.id).order_by(TurnGroup.created_at.desc()).all()
+
+    selected_group_id = request.args.get('group_id', type=int)
+    selected_group = None
+    add_member_form = None
+    queue_data = None
+
+    if selected_group_id:
+        selected_group = TurnGroup.query.filter_by(id=selected_group_id, parent_id=current_user.id).first()
+
+    if selected_group:
+        add_member_form = TurnAddMemberForm()
+        kids = User.query.filter_by(parent_id=current_user.id, role='child').order_by(User.username.asc()).all()
+        existing = set(m.child_id for m in TurnGroupMember.query.filter_by(group_id=selected_group.id).all())
+        choices = [(k.id, k.username) for k in kids if k.id not in existing]
+        if not choices:
+            choices = [(0, 'All kids already added')]
+        add_member_form.child_id.choices = choices
+
+        queue_data = _queue_for_group(selected_group, day)
+
+    return render_template(
+        'turns.html',
+        groups=groups,
+        selected_group=selected_group,
+        group_form=group_form,
+        add_member_form=add_member_form,
+        queue_data=queue_data,
+        day=day,
+    )
+
+
+@app.route("/turns/<int:group_id>/add_member", methods=["POST"])
+@login_required
+def turns_add_member(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnAddMemberForm()
+    kids = User.query.filter_by(parent_id=current_user.id, role='child').order_by(User.username.asc()).all()
+    existing = set(m.child_id for m in TurnGroupMember.query.filter_by(group_id=group.id).all())
+    form.child_id.choices = [(k.id, k.username) for k in kids if k.id not in existing] or [(0, 'All kids already added')]
+
+    if form.validate_on_submit() and form.child_id.data:
+        if form.child_id.data == 0:
+            return redirect(url_for('turns', group_id=group.id))
+
+        max_pos = db.session.query(db.func.max(TurnGroupMember.position)).filter_by(group_id=group.id).scalar()
+        next_pos = (max_pos + 1) if max_pos is not None else 0
+        member = TurnGroupMember(group_id=group.id, child_id=form.child_id.data, position=next_pos)
+        db.session.add(member)
+        db.session.commit()
+
+        # ensure today's state exists and is stable
+        _get_or_init_turn_state(group, _turn_day_key())
+
+        flash('Child added to turn group.', 'success')
+    else:
+        flash('Could not add child.', 'danger')
+
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/next", methods=["POST"])
+@login_required
+def turns_next(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    day = _turn_day_key()
+    queue_data = _queue_for_group(group, day)
+    if not queue_data or not queue_data['now']:
+        flash('No active turn right now.', 'warning')
+        return redirect(url_for('turns', group_id=group.id))
+
+    now_child = queue_data['now']
+    usage = _ensure_usage_row(group.id, now_child.id, day)
+    remaining = max(group.daily_quota_min - usage.used_min, 0)
+
+    consume = min(group.turn_duration_min, remaining)
+    usage.used_min += consume
+    db.session.commit()
+
+    # advance state to the next member position after the current child
+    members = _get_group_members(group)
+    if not members:
+        return redirect(url_for('turns', group_id=group.id))
+
+    state = _get_or_init_turn_state(group, day)
+    # find the member object for now_child
+    now_member = next((m for m in members if m.child_id == now_child.id), None)
+    if now_member is None:
+        return redirect(url_for('turns', group_id=group.id))
+
+    ordered = members
+    now_index = ordered.index(now_member)
+    next_member = ordered[(now_index + 1) % len(ordered)]
+    state.current_position = next_member.position
+    db.session.commit()
+
+    flash('Next turn!', 'success')
+    return redirect(url_for('turns', group_id=group.id))
 
 
 # ── CREATE TASK (with image) ──────────────────────────────────────────────────

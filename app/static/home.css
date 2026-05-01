@@ -43,6 +43,23 @@
   gap: 4px;
 }
 
+.nav-toggle {
+  display: none;
+}
+
+.nav-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 1.4rem;
+  cursor: pointer;
+  user-select: none;
+  color: #555555;
+}
+
 .top-nav a {
   margin: 0 6px;
   text-decoration: none;
@@ -268,7 +285,23 @@
     flex-direction: column;
   }
 
+  .nav-hamburger {
+    display: inline-flex;
+  }
+
   .top-nav {
     width: 100%;
+    display: none;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .nav-toggle:checked + .nav-hamburger + .top-nav {
+    display: flex;
+  }
+
+  .top-nav a {
+    margin: 0;
+    padding: 10px 8px;
   }
 }

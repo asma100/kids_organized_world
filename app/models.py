@@ -289,6 +289,67 @@ class SavingsGoal(db.Model):
     achieved = db.Column(db.Boolean, nullable=False, default=False)
 
 
+# ── Turn Management (MVP) ─────────────────────────────────────────────────────
+
+class TurnGroup(db.Model):
+    __tablename__ = 'turn_group'
+
+    id = db.Column(db.Integer, primary_key=True)
+    parent_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(80), nullable=False)
+
+    # Fixed duration per turn (minutes)
+    turn_duration_min = db.Column(db.Integer, nullable=False, default=30)
+
+    # Daily quota per child (minutes)
+    daily_quota_min = db.Column(db.Integer, nullable=False, default=180)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    members = db.relationship('TurnGroupMember', backref='group', lazy=True,
+                              cascade='all, delete-orphan')
+
+
+class TurnGroupMember(db.Model):
+    __tablename__ = 'turn_group_member'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('turn_group.id'), nullable=False)
+    child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)  # stable order within the group
+
+    __table_args__ = (
+        db.UniqueConstraint('group_id', 'child_id', name='uq_turn_group_child'),
+    )
+
+
+class TurnDailyUsage(db.Model):
+    __tablename__ = 'turn_daily_usage'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('turn_group.id'), nullable=False)
+    child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    day = db.Column(db.Date, nullable=False)
+    used_min = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        db.UniqueConstraint('group_id', 'child_id', 'day', name='uq_turn_usage_day'),
+    )
+
+
+class TurnDayState(db.Model):
+    __tablename__ = 'turn_day_state'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('turn_group.id'), nullable=False)
+    day = db.Column(db.Date, nullable=False)
+    current_position = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        db.UniqueConstraint('group_id', 'day', name='uq_turn_state_day'),
+    )
+
+
     # ── OMR Sheet Models ───────────────────────────────────────────────────────
 
  

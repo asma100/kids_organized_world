@@ -66,9 +66,12 @@
   <header class="site-header">
     <nav>
       <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <input class="nav-toggle" type="checkbox" id="nav-toggle">
+      <label class="nav-hamburger" for="nav-toggle" aria-label="Toggle navigation">☰</label>
       <div class="navbar-nav mr-auto">
         <a class="nav-item" href="{{ url_for('home') }}">Home</a>
         <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+        <a class="nav-item" href="{{ url_for('turns') }}">Turns</a>
       </div>
       <div class="navbar-nav">
         <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
