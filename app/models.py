@@ -63,15 +63,18 @@ class User(db.Model, UserMixin):
         db.UniqueConstraint('username', 'parent_id', name='unique_username_per_parent'),
     )
 
+    @staticmethod
+    def _auth_serializer():
+        return Serializer(current_app.config['SECRET_KEY'], salt='auth-token')
+
     def get_auth_token(self, expires_sec=86400):
-        serializer = Serializer(current_app.config['SECRET_KEY'], expires_sec)
-        return serializer.dumps({'user_id': self.id}).decode('utf-8')
+        return self._auth_serializer().dumps({'user_id': self.id})
 
     @staticmethod
-    def verify_auth_token(token):
-        serializer = Serializer(current_app.config['SECRET_KEY'])
+    def verify_auth_token(token, max_age=86400):
+        serializer = Serializer(current_app.config['SECRET_KEY'], salt='auth-token')
         try:
-            data = serializer.loads(token)
+            data = serializer.loads(token, max_age=max_age)
         except Exception:
             return None
         return User.query.get(data.get('user_id'))
