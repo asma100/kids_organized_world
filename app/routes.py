@@ -210,6 +210,8 @@ def api_login():
             'role': user.role,
             'username': user.username,
             'email': user.email,
+            'points': user.points,
+            'crosses': user.crosses,
         }), 200
 
     return jsonify({'success': False, 'message': 'Invalid email or password.'}), 401
@@ -263,6 +265,8 @@ def api_register():
         'username': user.username,
         'email': user.email,
         'parent_id': user.parent_id,
+        'points': user.points,
+        'crosses': user.crosses,
     }), 201
 
 
@@ -281,6 +285,8 @@ def api_user():
             'email': user.email,
             'role': user.role,
             'parent_id': user.parent_id,
+            'points': user.points,
+            'crosses': user.crosses,
         }
     }), 200
 
@@ -304,10 +310,64 @@ def api_kids():
                 'username': kid.username,
                 'email': kid.email,
                 'points': kid.points,
+                'crosses': kid.crosses,
             }
             for kid in kids
         ]
     }), 200
+
+
+@csrf.exempt
+@app.route('/api/web_session', methods=['GET'])
+def api_web_session():
+    """Bridge: convert Bearer token auth into a normal Flask login session.
+
+    This exists so the mobile app can open the existing HTML pages (taskList,
+    goodactions, badactions, money) inside a WebView.
+
+    Query params:
+      - next: a relative path like /taskList
+      - child_id: optional; if the authenticated user is a parent, sets
+        session['active_child_id'] for that child.
+    """
+    user = _get_token_auth_user()
+    if not user:
+        return redirect(url_for('login'))
+
+    login_user(user)
+
+    child_id = request.args.get('child_id')
+    if user.role == 'parent' and child_id:
+        try:
+            child_id_int = int(child_id)
+        except (TypeError, ValueError):
+            child_id_int = None
+
+        if child_id_int is not None:
+            child = User.query.filter_by(
+                id=child_id_int,
+                parent_id=user.id,
+                role='child',
+            ).first()
+            if child:
+                session['active_child_id'] = child.id
+
+    next_path = request.args.get('next', '/home')
+    if not isinstance(next_path, str) or not next_path.startswith('/') or next_path.startswith('//'):
+        next_path = '/home'
+
+    allowed_paths = {
+        '/home',
+        '/parent',
+        '/taskList',
+        '/goodactions',
+        '/badactions',
+        '/money',
+    }
+    if next_path not in allowed_paths:
+        next_path = '/home'
+
+    return redirect(next_path)
 
 
 # ── HOME ──────────────────────────────────────────────────────────────────────
