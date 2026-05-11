@@ -205,6 +205,7 @@ def api_login():
         token = user.get_auth_token()
         return jsonify({
             'success': True,
+            'id': user.id,
             'token': token,
             'role': user.role,
             'username': user.username,
@@ -221,6 +222,16 @@ def api_register():
     email = (data.get('email') or '').strip().lower()
     password = data.get('password') or ''
     username = (data.get('username') or '').strip()
+    parent_id = data.get('parent_id')
+    role = (data.get('role') or '').strip().lower()
+
+    if parent_id in ('', None):
+        parent_id = None
+    else:
+        try:
+            parent_id = int(parent_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Parent id must be numeric.'}), 400
 
     if not email or not password or not username:
         return jsonify({'success': False, 'message': 'Email, password, and username are required.'}), 400
@@ -228,18 +239,30 @@ def api_register():
     if User.query.filter_by(email=email).first():
         return jsonify({'success': False, 'message': 'Email already exists.'}), 409
 
+    if parent_id is not None:
+        parent = User.query.filter_by(id=parent_id, role='parent').first()
+        if not parent:
+            return jsonify({'success': False, 'message': 'Parent account not found.'}), 404
+        if role and role != 'child':
+            return jsonify({'success': False, 'message': 'Child accounts must use role child.'}), 400
+        role = 'child'
+    else:
+        role = 'parent'
+
     hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-    user = User(username=username, email=email, password=hashed_password, role='parent')
+    user = User(username=username, email=email, password=hashed_password, role=role, parent_id=parent_id)
     db.session.add(user)
     db.session.commit()
 
     token = user.get_auth_token()
     return jsonify({
         'success': True,
+        'id': user.id,
         'token': token,
         'role': user.role,
         'username': user.username,
         'email': user.email,
+        'parent_id': user.parent_id,
     }), 201
 
 
