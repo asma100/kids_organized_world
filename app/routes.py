@@ -1,7 +1,7 @@
 from datetime import date as date_type, timedelta, datetime
 import calendar as pycal
 from flask import render_template, url_for, flash, redirect, request, session, jsonify, current_app
-from app import app, db, bcrypt, oauth
+from app import app, db, bcrypt, oauth, csrf
 from app.forms import (RegistrationForm, LoginForm, CreateTaskForm,
                        UpdateTaskForm, GoodActionForm, BadActionForm,
                        RewardForm, PunishmentForm, AddMoneyForm,
@@ -190,6 +190,7 @@ def _get_token_auth_user():
     return User.verify_auth_token(token)
 
 
+@csrf.exempt
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.get_json() or {}
@@ -213,6 +214,7 @@ def api_login():
     return jsonify({'success': False, 'message': 'Invalid email or password.'}), 401
 
 
+@csrf.exempt
 @app.route('/api/register', methods=['POST'])
 def api_register():
     data = request.get_json() or {}
@@ -241,6 +243,7 @@ def api_register():
     }), 201
 
 
+@csrf.exempt
 @app.route('/api/user')
 def api_user():
     user = _get_token_auth_user()
@@ -259,6 +262,7 @@ def api_user():
     }), 200
 
 
+@csrf.exempt
 @app.route('/api/kids')
 def api_kids():
     user = _get_token_auth_user()
