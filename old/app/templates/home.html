@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kids Organized World 🌟</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;700;800&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
+  <style>
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 200px;
+      gap: 2rem;
+      align-items: center;
+      background: linear-gradient(135deg, #fff8e1 0%, #fce4ec 60%, #e8f5e9 100%);
+      border: 2.5px solid var(--ink);
+      border-radius: 24px;
+      padding: 2.5rem 2rem;
+      box-shadow: 6px 6px 0 var(--ink);
+      margin-bottom: 2rem;
+    }
+    @media (max-width: 600px) {
+      .hero { grid-template-columns: 1fr; }
+      .hero img { display: none; }
+    }
+    .hero-title {
+      font-family: 'Baloo 2', cursive;
+      font-size: 2.6rem;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 0.5rem;
+    }
+    .hero-text { font-size: 1.05rem; font-weight: 600; color: #555; margin-bottom: 1.3rem; max-width: 420px; }
+    .hero-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .hero img {
+      width: 190px; height: 190px;
+      object-fit: cover;
+      border: 2.5px solid var(--ink);
+      border-radius: 20px;
+      box-shadow: 5px 5px 0 var(--ink);
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .score-card {
+      display: flex; align-items: center; gap: 0.9rem;
+      padding: 1.2rem 1.4rem;
+      border: 2.5px solid var(--ink);
+      border-radius: 16px;
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+    .score-card-points  { background: #fffde7; }
+    .score-card-crosses { background: #fff0f0; }
+    .score-icon { font-size: 2.2rem; }
+    .score-label { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #888; }
+    .score-value { font-family: 'Baloo 2', cursive; font-size: 2rem; font-weight: 800; line-height: 1; }
+
+    .home-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 640px) { .home-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .home-card {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.55rem; padding: 1.5rem 0.8rem;
+      background: #fff;
+      border: 2.5px solid var(--ink);
+      border-radius: 18px;
+      box-shadow: 4px 4px 0 var(--ink);
+      text-decoration: none; color: var(--ink);
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .home-card:hover { transform: translate(-2px,-3px); box-shadow: 6px 7px 0 var(--ink); }
+    .home-card:active { transform: translate(2px,2px); box-shadow: 2px 2px 0 var(--ink); }
+    .home-card-icon { font-size: 2.4rem; }
+    .home-card h3 { font-family: 'Baloo 2', cursive; font-size: 0.95rem; font-weight: 700; text-align: center; }
+    .tasks-card { background: #e8f5e9; }
+    .good-card  { background: #fffde7; }
+    .bad-card   { background: #fce4ec; }
+    .money-card { background: #e3f2fd; }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+    @media (max-width: 500px) { .steps-grid { grid-template-columns: 1fr; } }
+
+    .step-card {
+      text-align: center; padding: 1.2rem;
+      background: #fff;
+      border: 2.5px solid var(--ink);
+      border-radius: 16px;
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+    .step-number {
+      width: 48px; height: 48px; border-radius: 50%;
+      border: 2.5px solid var(--ink);
+      background: var(--sun);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'Baloo 2', cursive; font-size: 1.4rem; font-weight: 800;
+      margin-bottom: 0.5rem;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+    .step-card h3 { font-family: 'Baloo 2', cursive; font-size: 1rem; font-weight: 700; }
+  </style>
+</head>
+<body class="home-page">
+
+  <header class="site-header">
+    <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+    <input class="nav-toggle" type="checkbox" id="nav-toggle">
+    <label class="nav-hamburger" for="nav-toggle" aria-label="Toggle navigation">☰</label>
+
+    <nav class="top-nav navbar-nav mr-auto" aria-label="Main navigation">
+      <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+      {% if current_user.is_authenticated and current_user.role == 'parent' %}
+        <a class="nav-item" href="{{ url_for('parent') }}">Dashboard</a>
+      {% endif %}
+      <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+      <a class="nav-item" href="{{ url_for('scan_sheet') }}">Scan</a>
+      <a class="nav-item" href="{{ url_for('money') }}">Money</a>
+      <a class="nav-item" href="{{ url_for('turns') }}">Turns</a>
+      {% if current_user.is_authenticated %}
+        <a class="nav-item" href="{{ url_for('logout') }}">Logout</a>
+      {% else %}
+        <a class="nav-item" href="{{ url_for('login') }}">Login</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main role="main" class="home-main">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+
+    <!-- Hero -->
+    <section class="hero">
+      <div>
+        <h1 class="hero-title">Make Tasks Fun! 🎮</h1>
+        <p class="hero-text">
+          Turn daily chores into a game with stars, rewards, and achievements!
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="{{ url_for('taskList') }}">📋 My Tasks</a>
+          <a class="btn btn-success" href="{{ url_for('goodactions') }}">⭐ Good Actions</a>
+        </div>
+      </div>
+      <img
+        src="{{ url_for('static', filename='images/cute.jpg') }}"
+        alt="Children playing happily"
+      >
+    </section>
+
+    <!-- Score cards (only if logged in) -->
+    {% if current_user.is_authenticated %}
+      <section class="score-grid" aria-label="Your progress">
+        <div class="score-card score-card-points">
+          <span class="score-icon">⭐</span>
+          <div>
+            <p class="score-label">Points</p>
+            <p class="score-value">{{ (view_user.points if view_user else current_user.points) }}</p>
+          </div>
+        </div>
+        <div class="score-card score-card-crosses">
+          <span class="score-icon">❌</span>
+          <div>
+            <p class="score-label">Mistakes</p>
+            <p class="score-value">{{ (view_user.crosses if view_user else current_user.crosses) }}</p>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+
+    <!-- Feature shortcuts -->
+    <section class="home-grid" aria-label="Feature shortcuts">
+      <a href="{{ url_for('taskList') }}"    class="home-card tasks-card">
+        <div class="home-card-icon">📋</div><h3>My Tasks</h3>
+      </a>
+      <a href="{{ url_for('goodactions') }}" class="home-card good-card">
+        <div class="home-card-icon">⭐</div><h3>Good Actions</h3>
+      </a>
+      <a href="{{ url_for('badactions') }}"  class="home-card bad-card">
+        <div class="home-card-icon">❌</div><h3>Bad Actions</h3>
+      </a>
+      <a href="{{ url_for('money') }}"       class="home-card money-card">
+        <div class="home-card-icon">💰</div><h3>My Money</h3>
+      </a>
+    </section>
+
+    <!-- How it works -->
+    <section class="steps-grid" aria-label="How it works">
+      <article class="step-card">
+        <div class="step-number">1</div>
+        <h3>Pick a Task</h3>
+      </article>
+      <article class="step-card">
+        <div class="step-number">2</div>
+        <h3>Earn Stars ⭐</h3>
+      </article>
+      <article class="step-card">
+        <div class="step-number">3</div>
+        <h3>Get Rewards 🏆</h3>
+      </article>
+    </section>
+
+  </main>
+</body>
+</html>

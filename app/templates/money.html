@@ -5,28 +5,93 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Money – KOW</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <style>
+    .money-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 0.9rem;
+      margin-bottom: 1.2rem;
+    }
+    .bucket {
+      background: #fff;
+      border: 2.5px solid var(--ink);
+      border-radius: 18px;
+      padding: 1.2rem 0.9rem;
+      text-align: center;
+      box-shadow: 4px 4px 0 var(--ink);
+      transition: transform 0.12s;
+    }
+    .bucket:hover { transform: translateY(-3px); }
+    .bucket-icon  { font-size: 2.4rem; margin-bottom: 0.3rem; }
+    .bucket-label { font-weight: 800; font-size: 0.78rem; text-transform: uppercase; letter-spacing:0.07em; color: var(--muted); }
+    .bucket-amount {
+      font-family: 'Baloo 2', cursive;
+      font-size: 1.7rem; font-weight: 800;
+      line-height: 1.2;
+      margin: 0.15rem 0;
+    }
+    .bucket-hint { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+
+    .bucket.unassigned { border-color: #9ca3af; background: #f9fafb; }
+    .bucket.saving     { border-color: var(--sky); background: #ecfffe; }
+    .bucket.spending   { border-color: var(--peach); background: #fff8f0; }
+    .bucket.kindness   { border-color: var(--lavender); background: #fdf4ff; }
+
+    .total-bar {
+      display: flex; align-items: center; justify-content: center; gap: 0.6rem;
+      background: var(--ink); color: #fff;
+      border-radius: 14px;
+      padding: 0.85rem 1.4rem;
+      margin-bottom: 1.5rem;
+      font-family: 'Baloo 2', cursive;
+      font-size: 1.3rem; font-weight: 700;
+      box-shadow: 4px 4px 0 rgba(0,0,0,0.3);
+    }
+
+    .tx-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.6rem 0;
+      border-bottom: 2px dashed #e5e7eb;
+      font-weight: 600; font-size: 0.9rem;
+      gap: 0.5rem;
+    }
+    .tx-row:last-child { border-bottom: none; }
+    .tx-amount.positive { color: #166534; font-weight: 800; }
+    .tx-amount.negative { color: #991b1b; font-weight: 800; }
+
+    .goal-item { margin-bottom: 1.1rem; }
+    .goal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.3rem; }
+    .goal-name { font-weight: 800; font-size: 0.95rem; }
+    .goal-amounts { font-size: 0.82rem; font-weight: 700; color: var(--muted); }
+    .goal-reward { font-size: 0.78rem; color: #555; font-weight: 600; margin-top: 0.2rem; }
+  </style>
 </head>
 <body>
+
   <header class="site-header">
     <nav>
       <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
       <input class="nav-toggle" type="checkbox" id="nav-toggle">
-      <label class="nav-hamburger" for="nav-toggle" aria-label="Toggle navigation">☰</label>
+      <label class="nav-hamburger" for="nav-toggle">☰</label>
       <div class="navbar-nav mr-auto">
         <a class="nav-item" href="{{ url_for('home') }}">Home</a>
         <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
         <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
-        <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
-        <a class="nav-item" href="{{ url_for('money') }}">My Money</a>
-        <a class="nav-item" href="{{ url_for('turns') }}">Turns</a>
+        <a class="nav-item" href="{{ url_for('badactions') }}">Negative Actions</a>
+        <a class="nav-item" href="{{ url_for('money') }}">Money</a>
+        {% if current_user.is_authenticated and current_user.role == 'parent' %}
+          <a class="nav-item" href="{{ url_for('parent_create_tasks') }}">Create Task</a>
+        {% endif %}
+        
       </div>
       <div class="navbar-nav">
-        <a class="nav-item nav-link" href="{{ url_for('logout') }}">Logout</a>
+        <a class="nav-item" href="{{ url_for('logout') }}">Logout</a>
       </div>
     </nav>
   </header>
 
   <main role="main" class="container">
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}{% for category, message in messages %}
         <div class="alert alert-{{ category }}">{{ message }}</div>
@@ -35,228 +100,266 @@
 
     <h2>💰 My Money</h2>
 
-    <!-- Balance buckets -->
+    <!-- Bucket grid -->
     <div class="money-grid">
-      <div class="money-bucket unassigned">
+      <div class="bucket unassigned">
         <div class="bucket-icon">🫙</div>
         <div class="bucket-label">Unassigned</div>
         <div class="bucket-amount">{{ "%.2f"|format(account.unassigned_balance) }}</div>
-        <div class="bucket-hint">Money waiting to be sorted</div>
+        <div class="bucket-hint">Waiting to be sorted</div>
       </div>
-      <div class="money-bucket saving">
-        <div class="bucket-icon">🫙</div>
+      <div class="bucket saving">
+        <div class="bucket-icon">🐷</div>
         <div class="bucket-label">Saving</div>
         <div class="bucket-amount">{{ "%.2f"|format(account.saving_balance) }}</div>
       </div>
-      <div class="money-bucket spending">
-        <div class="bucket-icon">🫙</div>
+      <div class="bucket spending">
+        <div class="bucket-icon">🛍</div>
         <div class="bucket-label">Spending</div>
         <div class="bucket-amount">{{ "%.2f"|format(account.spending_balance) }}</div>
       </div>
-      <div class="money-bucket donating">
-        <div class="bucket-icon">🫙</div>
+      <div class="bucket kindness">
+        <div class="bucket-icon">🤝</div>
         <div class="bucket-label">Kindness</div>
         <div class="bucket-amount">{{ "%.2f"|format(account.donating_balance) }}</div>
       </div>
     </div>
 
-    <div class="points-banner" style="margin-bottom:1.5rem;">
-      <span class="icon">💵</span> Total Balance: {{ "%.2f"|format(account.total_balance) }}
+    <!-- Total -->
+    <div class="total-bar">
+      <span>💵</span>
+      <span>Total Balance: {{ "%.2f"|format(account.total_balance) }}</span>
     </div>
 
     <div class="two-col-layout">
 
-      <!-- LEFT col: actions + history -->
+      <!-- LEFT: Actions + history -->
       <div>
 
         <!-- Add money -->
-        <div class="section-card form-card" style="border-color:#6BCB77;">
-          <h3 class="section-title">💰 Add Money</h3>
-          <form method="POST" action="{{ url_for('money_add') }}">
-            {{ add_form.hidden_tag() }}
-            <div class="form-group">
-              {{ add_form.amount.label(class="form-control-label") }}
-              {{ add_form.amount(class="form-control", placeholder="0.00", step="0.01") }}
-            </div>
-            <div class="form-group">
-              {{ add_form.note.label(class="form-control-label") }}
-              {{ add_form.note(class="form-control", placeholder="e.g. Pocket money from dad") }}
-            </div>
-            <div class="form-group">
-              {{ add_form.add_mode.label(class="form-control-label") }}
-              {{ add_form.add_mode(class="form-control") }}
-            </div>
-
-            <div class="form-group">
-              <div style="font-size:0.85rem; font-weight:800; margin-bottom:0.4rem;">Auto split % (only used if you choose auto split)</div>
-              <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.6rem;">
-                <div>
-                  {{ add_form.saving_pct.label(class="form-control-label") }}
-                  {{ add_form.saving_pct(class="form-control") }}
-                </div>
-                <div>
-                  {{ add_form.spending_pct.label(class="form-control-label") }}
-                  {{ add_form.spending_pct(class="form-control") }}
-                </div>
-                <div>
-                  {{ add_form.donating_pct.label(class="form-control-label") }}
-                  {{ add_form.donating_pct(class="form-control") }}
+        <details class="kow-collapse kow-form" style="border-color:var(--mint);" open>
+          <summary>
+            💰 Add Money
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            <form method="POST" action="{{ url_for('money_add') }}">
+              {{ add_form.hidden_tag() }}
+              <div class="form-group">
+                {{ add_form.amount.label(class="form-control-label") }}
+                {{ add_form.amount(class="form-control", placeholder="0.00", step="0.01") }}
+              </div>
+              <div class="form-group">
+                {{ add_form.note.label(class="form-control-label") }}
+                {{ add_form.note(class="form-control", placeholder="e.g. Pocket money from dad") }}
+              </div>
+              <div class="form-group">
+                {{ add_form.add_mode.label(class="form-control-label") }}
+                {{ add_form.add_mode(class="form-control") }}
+              </div>
+              <div class="form-group">
+                <div style="font-size:0.78rem; font-weight:800; margin-bottom:0.4rem; text-transform:uppercase; letter-spacing:0.05em;">Auto Split % (if auto split is chosen)</div>
+                <div style="display:grid; grid-template-columns: repeat(3,1fr); gap:0.5rem;">
+                  <div>
+                    {{ add_form.saving_pct.label(class="form-control-label") }}
+                    {{ add_form.saving_pct(class="form-control") }}
+                  </div>
+                  <div>
+                    {{ add_form.spending_pct.label(class="form-control-label") }}
+                    {{ add_form.spending_pct(class="form-control") }}
+                  </div>
+                  <div>
+                    {{ add_form.donating_pct.label(class="form-control-label") }}
+                    {{ add_form.donating_pct(class="form-control") }}
+                  </div>
                 </div>
               </div>
-            </div>
-            {{ add_form.submit(class="btn btn-success btn-block") }}
-          </form>
-        </div>
+              {{ add_form.submit(class="btn btn-success btn-block") }}
+            </form>
+          </div>
+        </details>
 
-        <!-- Spend money -->
-        <div class="section-card form-card" style="margin-top:1rem; border-color:#FFB347;">
-          <h3 class="section-title">🛍 Spend Money</h3>
-          <form method="POST" action="{{ url_for('money_spend') }}">
-            {{ spend_form.hidden_tag() }}
-            <div class="form-group">
-              {{ spend_form.amount.label(class="form-control-label") }}
-              {{ spend_form.amount(class="form-control", placeholder="0.00", step="0.01") }}
-            </div>
-            <div class="form-group">
-              {{ spend_form.note.label(class="form-control-label") }}
-              {{ spend_form.note(class="form-control", placeholder="What did you buy?") }}
-            </div>
-            {{ spend_form.submit(class="btn btn-warning btn-block") }}
-          </form>
-        </div>
+        <!-- Spend -->
+        <details class="kow-collapse kow-form" style="margin-top:1rem; border-color:var(--peach);">
+          <summary>
+            🛍 Spend Money
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            <form method="POST" action="{{ url_for('money_spend') }}">
+              {{ spend_form.hidden_tag() }}
+              <div class="form-group">
+                {{ spend_form.amount.label(class="form-control-label") }}
+                {{ spend_form.amount(class="form-control", placeholder="0.00") }}
+              </div>
+              <div class="form-group">
+                {{ spend_form.note.label(class="form-control-label") }}
+                {{ spend_form.note(class="form-control", placeholder="What did you buy?") }}
+              </div>
+              {{ spend_form.submit(class="btn btn-warning btn-block") }}
+            </form>
+          </div>
+        </details>
 
-        <!-- Donate money -->
-        <div class="section-card form-card" style="margin-top:1rem; border-color:#C77DFF;">
-          <h3 class="section-title">🤝 Kindness</h3>
-          <form method="POST" action="{{ url_for('money_donate') }}">
-            {{ spend_form.hidden_tag() }}
-            <div class="form-group">
-              {{ spend_form.amount.label(class="form-control-label") }}
-              {{ spend_form.amount(class="form-control", placeholder="0.00", step="0.01") }}
-            </div>
-            <div class="form-group">
-              {{ spend_form.note.label(class="form-control-label") }}
-              {{ spend_form.note(class="form-control", placeholder="What kindness did you do?") }}
-            </div>
-            <button type="submit" class="btn btn-block" style="background:var(--lavender);border:var(--border);box-shadow:var(--shadow);font-weight:800;">
-              🤝 Add Kindness
-            </button>
-          </form>
-        </div>
+        <!-- Kindness -->
+        <details class="kow-collapse kow-form" style="margin-top:1rem; border-color:var(--lavender);">
+          <summary>
+            🤝 Kindness Donation
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            <form method="POST" action="{{ url_for('money_donate') }}">
+              {{ spend_form.hidden_tag() }}
+              <div class="form-group">
+                {{ spend_form.amount.label(class="form-control-label") }}
+                {{ spend_form.amount(class="form-control", placeholder="0.00") }}
+              </div>
+              <div class="form-group">
+                {{ spend_form.note.label(class="form-control-label") }}
+                {{ spend_form.note(class="form-control", placeholder="What kindness did you do?") }}
+              </div>
+              <button type="submit" class="btn btn-block" style="background:var(--lavender); border:var(--border); box-shadow:var(--shadow); font-weight:800;">🤝 Add Kindness</button>
+            </form>
+          </div>
+        </details>
 
         <!-- Transaction history -->
-        <div class="section-card" style="margin-top:1rem;">
-          <h3 class="section-title">🧾 Recent Transactions</h3>
-          {% if transactions %}
-            {% for tx in transactions %}
-              <div style="display:flex; justify-content:space-between; padding:0.5rem 0; border-bottom:2px dashed #eee;">
-                <span>
-                  {% if tx.transaction_type == 'income' %}💰
-                  {% elif tx.transaction_type == 'expense' %}🛍
-                  {% else %}🤝{% endif %}
-                  {{ tx.note or tx.transaction_type }}
-                </span>
-                <span style="font-weight:800;color:{{ '#2d7a2d' if tx.amount > 0 else '#cc3333' }};">
-                  {{ '+' if tx.amount > 0 else '' }}{{ "%.2f"|format(tx.amount) }}
-                </span>
-              </div>
-            {% endfor %}
-          {% else %}
-            <p class="empty-msg">No transactions yet.</p>
-          {% endif %}
-        </div>
+        <details class="kow-collapse" style="margin-top:1rem;" open>
+          <summary>
+            🧾 Recent Transactions
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            {% if transactions %}
+              {% for tx in transactions %}
+                <div class="tx-row">
+                  <span>
+                    {% if tx.transaction_type == 'income' %}💰
+                    {% elif tx.transaction_type == 'expense' %}🛍
+                    {% else %}🤝{% endif %}
+                    {{ tx.note or tx.transaction_type }}
+                  </span>
+                  <span class="tx-amount {{ 'positive' if tx.amount > 0 else 'negative' }}">
+                    {{ '+' if tx.amount > 0 else '' }}{{ "%.2f"|format(tx.amount) }}
+                  </span>
+                </div>
+              {% endfor %}
+            {% else %}
+              <p class="empty-msg">No transactions yet.</p>
+            {% endif %}
+          </div>
+        </details>
 
       </div>
 
-      <!-- RIGHT col: goals + split -->
+      <!-- RIGHT: Goals + split -->
       <div>
 
         <!-- Savings goals -->
-        <div class="section-card gold-card">
-          <h3 class="section-title">🎯 Savings Goals</h3>
-          {% if goals %}
-            {% for goal in goals %}
-              {% set pct = [(((goal.current_amount or 0) / goal.target_amount) * 100)|int, 100]|min %}
-              <div style="margin-bottom:1rem;">
-                <div style="display:flex; justify-content:space-between;">
-                  <strong>{{ goal.name }}</strong>
-                  {% if goal.achieved %}
-                    <span class="badge badge-success">🎉 Done!</span>
-                  {% else %}
-                    <span style="font-size:0.85rem; font-weight:700;">{{ "%.2f"|format(goal.current_amount or 0) }} / {{ "%.2f"|format(goal.target_amount) }}</span>
+        <details class="kow-collapse kow-gold" open>
+          <summary>
+            🎯 Savings Goals
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            {% if goals %}
+              {% for goal in goals %}
+                {% set pct = [(((goal.current_amount or 0) / goal.target_amount) * 100)|int, 100]|min %}
+                <div class="goal-item">
+                  <div class="goal-header">
+                    <div>
+                      <div class="goal-name">{{ goal.name }}</div>
+                      {% if goal.reward_description %}
+                        <div class="goal-reward">🎁 {{ goal.reward_description }}</div>
+                      {% endif %}
+                    </div>
+                    {% if goal.achieved %}
+                      <span class="badge badge-success">🎉 Done!</span>
+                    {% else %}
+                      <span class="goal-amounts">{{ "%.2f"|format(goal.current_amount or 0) }} / {{ "%.2f"|format(goal.target_amount) }}</span>
+                    {% endif %}
+                  </div>
+                  <div class="progress-bar-wrap">
+                    <div class="progress-bar-fill" style="width:{{ pct }}%; background:{{ '#4CAF50' if goal.achieved else '#4ECDC4' }};"></div>
+                  </div>
+
+                  {% if not goal.achieved %}
+                    <form method="POST" action="{{ url_for('money_goal_deposit', goal_id=goal.id) }}" style="margin-top:0.6rem;">
+                      {{ goal_deposit_form.hidden_tag() }}
+                      <div style="display:flex; gap:0.5rem; align-items:flex-end;">
+                        <div style="flex:1;">
+                          {{ goal_deposit_form.amount.label(class="form-control-label") }}
+                          {{ goal_deposit_form.amount(class="form-control", placeholder="0.00", step="0.01") }}
+                        </div>
+                        {{ goal_deposit_form.submit(class="btn btn-primary btn-sm") }}
+                      </div>
+                      <div style="font-size:0.75rem; color:var(--muted); font-weight:700; margin-top:0.3rem;">
+                        Deposits come from your Saving jar.
+                      </div>
+                    </form>
                   {% endif %}
                 </div>
-                <div class="progress-bar-wrap">
-                  <div class="progress-bar-fill" style="width:{{ pct }}%;"></div>
-                </div>
-                {% if goal.reward_description %}
-                  <p style="font-size:0.8rem; color:#666;">🎁 {{ goal.reward_description }}</p>
-                {% endif %}
+              {% endfor %}
+            {% else %}
+              <p class="empty-msg">No goals yet. Set one below!</p>
+            {% endif %}
+          </div>
+        </details>
 
-                {% if not goal.achieved %}
-                  <form method="POST" action="{{ url_for('money_goal_deposit', goal_id=goal.id) }}" style="margin-top:0.6rem;">
-                    {{ goal_deposit_form.hidden_tag() }}
-                    <div style="display:flex; gap:0.6rem; align-items:flex-end;">
-                      <div style="flex:1;">
-                        {{ goal_deposit_form.amount.label(class="form-control-label") }}
-                        {{ goal_deposit_form.amount(class="form-control", placeholder="0.00", step="0.01", id="goal_amount_" ~ goal.id) }}
-                      </div>
-                      {{ goal_deposit_form.submit(class="btn btn-primary") }}
-                    </div>
-                    <div style="font-size:0.8rem; font-weight:700; margin-top:0.35rem;">
-                      Deposits come from your Saving jar.
-                    </div>
-                  </form>
-                {% endif %}
+        <!-- New goal -->
+        <details class="kow-collapse kow-form" style="margin-top:1rem;">
+          <summary>
+            🎯 New Savings Goal
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            <form method="POST" action="{{ url_for('money_goal') }}">
+              {{ goal_form.hidden_tag() }}
+              <div class="form-group">
+                {{ goal_form.name.label(class="form-control-label") }}
+                {{ goal_form.name(class="form-control", placeholder="e.g. New bike") }}
               </div>
-            {% endfor %}
-          {% else %}
-            <p class="empty-msg">No goals yet. Set one below!</p>
-          {% endif %}
-        </div>
+              <div class="form-group">
+                {{ goal_form.target_amount.label(class="form-control-label") }}
+                {{ goal_form.target_amount(class="form-control", placeholder="0.00") }}
+              </div>
+              <div class="form-group">
+                {{ goal_form.reward_description.label(class="form-control-label") }}
+                {{ goal_form.reward_description(class="form-control", placeholder="What will you get?") }}
+              </div>
+              {{ goal_form.submit(class="btn btn-warning btn-block") }}
+            </form>
+          </div>
+        </details>
 
-        <!-- New goal form -->
-        <div class="section-card form-card" style="margin-top:1rem;">
-          <h3 class="section-title">🎯 New Savings Goal</h3>
-          <form method="POST" action="{{ url_for('money_goal') }}">
-            {{ goal_form.hidden_tag() }}
-            <div class="form-group">
-              {{ goal_form.name.label(class="form-control-label") }}
-              {{ goal_form.name(class="form-control", placeholder="e.g. New bike") }}
-            </div>
-            <div class="form-group">
-              {{ goal_form.target_amount.label(class="form-control-label") }}
-              {{ goal_form.target_amount(class="form-control", placeholder="0.00", step="0.01") }}
-            </div>
-            <div class="form-group">
-              {{ goal_form.reward_description.label(class="form-control-label") }}
-              {{ goal_form.reward_description(class="form-control", placeholder="What will you get?") }}
-            </div>
-            {{ goal_form.submit(class="btn btn-warning btn-block") }}
-          </form>
-        </div>
-
-        <!-- Split percentages -->
-        <div class="section-card form-card" style="margin-top:1rem; border-color:#6EC6F5;">
-          <h3 class="section-title">📊 Sort Unassigned Money</h3>
-          <p style="font-size:0.85rem; color:#666; margin-bottom:0.8rem;">Use percentages to move your unassigned money into the jars.</p>
-          <form method="POST" action="{{ url_for('money_split') }}">
-            {{ split_form.hidden_tag() }}
-            <div class="form-group">
-              {{ split_form.saving_pct.label(class="form-control-label") }}
-              {{ split_form.saving_pct(class="form-control") }}
-            </div>
-            <div class="form-group">
-              {{ split_form.spending_pct.label(class="form-control-label") }}
-              {{ split_form.spending_pct(class="form-control") }}
-            </div>
-            <div class="form-group">
-              {{ split_form.donating_pct.label(class="form-control-label") }}
-              {{ split_form.donating_pct(class="form-control") }}
-            </div>
-            {{ split_form.submit(class="btn btn-primary btn-block") }}
-          </form>
-        </div>
+        <!-- Sort unassigned money -->
+        <details class="kow-collapse kow-form" style="margin-top:1rem; border-color:var(--sky);">
+          <summary>
+            📊 Sort Unassigned Money
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            <p style="font-size:0.83rem; color:var(--muted); font-weight:600; margin-bottom:0.8rem;">
+              Use percentages to move unassigned money into jars.
+            </p>
+            <form method="POST" action="{{ url_for('money_split') }}">
+              {{ split_form.hidden_tag() }}
+              <div class="form-group">
+                {{ split_form.saving_pct.label(class="form-control-label") }}
+                {{ split_form.saving_pct(class="form-control") }}
+              </div>
+              <div class="form-group">
+                {{ split_form.spending_pct.label(class="form-control-label") }}
+                {{ split_form.spending_pct(class="form-control") }}
+              </div>
+              <div class="form-group">
+                {{ split_form.donating_pct.label(class="form-control-label") }}
+                {{ split_form.donating_pct(class="form-control") }}
+              </div>
+              {{ split_form.submit(class="btn btn-primary btn-block") }}
+            </form>
+          </div>
+        </details>
 
       </div>
     </div>

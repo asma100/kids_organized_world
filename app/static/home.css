@@ -1,11 +1,20 @@
 :root {
-  --blue: #7ec8e3;
-  --yellow: #ffe066;
-  --green: #9ee6a0;
-  --coral: #ff8a8a;
-  --purple: #cdb4db;
-  --bg: #f8fafc;
-  --text: #333333;
+  --sky: #6EC6F5;
+  --sun: #FFD93D;
+  --grass: #6BCB77;
+  --coral: #FF6B6B;
+  --lavender: #C77DFF;
+  --peach: #FFB347;
+  --mint: #A8EDEA;
+  --cloud: #FFFFFF;
+  --ink: #2D2D2D;
+  --soft: #F7F3FF;
+
+  --shadow: 4px 4px 0px #2D2D2D;
+  --shadow-lg: 6px 6px 0px #2D2D2D;
+  --border: 3px solid #2D2D2D;
+  --radius: 20px;
+  --radius-sm: 12px;
 }
 
 * {
@@ -13,66 +22,185 @@
 }
 
 .home-page {
-  margin: 0;
   font-family: 'Nunito', sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  background-color: var(--soft);
+  background-image:
+    radial-gradient(circle at 10% 20%, #FFD93D33 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, #6EC6F533 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, #C77DFF22 0%, transparent 60%);
+  color: var(--ink);
+  min-height: 100vh;
 }
 
 .site-header {
-  background: #ffffff;
-  padding: 12px 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  background: var(--cloud);
+  border-bottom: var(--border);
+  box-shadow: 0 4px 0 #2D2D2D;
+  padding: 0 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  max-width: 1100px;
+  margin: 0 auto;
+  height: 70px;
 }
 
 .navbar-brand {
-  font-weight: 800;
-  font-size: 1.4rem;
-  color: var(--blue);
+  font-family: 'Fredoka One', cursive;
+  font-size: 1.6rem;
+  color: var(--coral);
   text-decoration: none;
+  letter-spacing: 1px;
 }
 
 .top-nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.nav-toggle {
-  display: none;
-}
-
-.nav-hamburger {
-  display: none;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  font-size: 1.4rem;
-  cursor: pointer;
-  user-select: none;
-  color: #555555;
+  gap: 0.5rem;
 }
 
-.top-nav a {
-  margin: 0 6px;
+.nav-item {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
   text-decoration: none;
-  font-weight: 600;
-  color: #555555;
-  padding: 6px 8px;
-  border-radius: 8px;
+  color: var(--ink);
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 2.5px solid transparent;
+  transition: all 0.15s ease;
 }
 
-.top-nav a:hover {
-  color: var(--blue);
-  background: #f1f8fb;
+.nav-item:hover {
+  background: var(--sun);
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  transform: translate(-1px, -1px);
 }
+
+
+
+
+
+
+
+
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr 200px;
+      gap: 2rem;
+      align-items: center;
+      background: linear-gradient(135deg, #fff8e1 0%, #fce4ec 60%, #e8f5e9 100%);
+      border: 2.5px solid var(--ink);
+      border-radius: 24px;
+      padding: 2.5rem 2rem;
+      box-shadow: 6px 6px 0 var(--ink);
+      margin-bottom: 2rem;
+    }
+    @media (max-width: 600px) {
+      .hero { grid-template-columns: 1fr; }
+      .hero img { display: none; }
+    }
+    .hero-title {
+      font-family: 'Baloo 2', cursive;
+      font-size: 2.6rem;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 0.5rem;
+    }
+    .hero-text { font-size: 1.05rem; font-weight: 600; color: #555; margin-bottom: 1.3rem; max-width: 420px; }
+    .hero-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .hero img {
+      width: 190px; height: 190px;
+      object-fit: cover;
+      border: 2.5px solid var(--ink);
+      border-radius: 20px;
+      box-shadow: 5px 5px 0 var(--ink);
+    }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .score-card {
+      display: flex; align-items: center; gap: 0.9rem;
+      padding: 1.2rem 1.4rem;
+      border: 2.5px solid var(--ink);
+      border-radius: 16px;
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+    .score-card-points  { background: #fffde7; }
+    .score-card-crosses { background: #fff0f0; }
+    .score-icon { font-size: 2.2rem; }
+    .score-label { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #888; }
+    .score-value { font-family: 'Baloo 2', cursive; font-size: 2rem; font-weight: 800; line-height: 1; }
+
+    .home-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    @media (max-width: 640px) { .home-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    .home-card {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.55rem; padding: 1.5rem 0.8rem;
+      background: #fff;
+      border: 2.5px solid var(--ink);
+      border-radius: 18px;
+      box-shadow: 4px 4px 0 var(--ink);
+      text-decoration: none; color: var(--ink);
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .home-card:hover { transform: translate(-2px,-3px); box-shadow: 6px 7px 0 var(--ink); }
+    .home-card:active { transform: translate(2px,2px); box-shadow: 2px 2px 0 var(--ink); }
+    .home-card-icon { font-size: 2.4rem; }
+    .home-card h3 { font-family: 'Baloo 2', cursive; font-size: 0.95rem; font-weight: 700; text-align: center; }
+    .tasks-card { background: #e8f5e9; }
+    .good-card  { background: #fffde7; }
+    .bad-card   { background: #fce4ec; }
+    .money-card { background: #e3f2fd; }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 0.5rem;
+    }
+    @media (max-width: 500px) { .steps-grid { grid-template-columns: 1fr; } }
+
+    .step-card {
+      text-align: center; padding: 1.2rem;
+      background: #fff;
+      border: 2.5px solid var(--ink);
+      border-radius: 16px;
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+    .step-number {
+      width: 48px; height: 48px; border-radius: 50%;
+      border: 2.5px solid var(--ink);
+      background: var(--sun);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'Baloo 2', cursive; font-size: 1.4rem; font-weight: 800;
+      margin-bottom: 0.5rem;
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+    .step-card h3 { font-family: 'Baloo 2', cursive; font-size: 1rem; font-weight: 700; }
+  
+
+
+
+
+
+
+
 
 .home-main {
   max-width: 1200px;

@@ -101,8 +101,11 @@
         <a class="nav-item" href="{{ url_for('taskList') }}">My Tasks</a>
         <a class="nav-item" href="{{ url_for('presets') }}">Ready Tasks</a>
         <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
-        <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
+        <a class="nav-item" href="{{ url_for('badactions') }}">Negative Actions</a>
         <a class="nav-item" href="{{ url_for('money') }}">My Money</a>
+        {% if current_user.is_authenticated and current_user.role == 'parent' %}
+          <a class="nav-item" href="{{ url_for('parent_create_tasks') }}">Create Task</a>
+        {% endif %}
         <a class="nav-item" href="{{ url_for('turns') }}">Turns</a>
       </div>
       <div class="navbar-nav">

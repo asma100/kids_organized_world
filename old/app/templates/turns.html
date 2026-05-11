@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turns – KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <style>
+    .tab-bar {
+      display: flex; gap: 0.35rem; flex-wrap: wrap;
+      margin-bottom: 1rem; background: #f3f4f6;
+      border: 2px solid var(--ink); border-radius: 14px; padding: 0.3rem;
+    }
+    .tab-btn {
+      flex: 1; min-width: 70px; padding: 0.45rem 0.7rem;
+      border-radius: 10px; border: none; cursor: pointer;
+      font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.8rem;
+      background: transparent; color: #6b7280; transition: all 0.15s; text-align: center;
+    }
+    .tab-btn.active { background: var(--ink); color: #fff; box-shadow: 2px 2px 0 rgba(0,0,0,0.2); }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    .cat-badge {
+      display: inline-block; padding: 0.15rem 0.6rem;
+      border-radius: 99px; font-size: 0.75rem; font-weight: 900;
+      margin-left: 0.4rem; border: 1.5px solid var(--ink);
+    }
+    .cat-clock    { background: #ffe0b2; color: #bf360c; }
+    .cat-calendar { background: #c8e6c9; color: #1b5e20; }
+    .cat-event    { background: #e1bee7; color: #4a148c; }
+
+    .group-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.75rem 0; border-bottom: 2px dashed #e5e7eb; gap: 0.6rem;
+    }
+    .group-row:last-child { border-bottom: none; }
+    .group-name { font-weight: 800; font-size: 0.95rem; }
+    .group-meta { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+
+    .turn-card {
+      border-radius: 14px; padding: 0.9rem 1rem;
+      border: 2.5px solid #e5e7eb; background: #fafafa; margin-bottom: 0.6rem;
+    }
+    .turn-card.turn-now  { border-color: var(--mint); background: #f1fff3; }
+    .turn-card.turn-next { border-color: var(--peach); background: #fff8f0; }
+    .turn-name {
+      font-family: 'Baloo 2', cursive; font-size: 1.05rem; font-weight: 800;
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+    .turn-status {
+      font-size: 0.78rem; font-weight: 800; padding: 0.1rem 0.55rem;
+      border-radius: 99px; border: 1.5px solid var(--ink);
+    }
+    .status-now  { background: var(--mint); }
+    .status-next { background: var(--peach); }
+
+    .clock-face {
+      font-family: 'Baloo 2', cursive; font-size: 3.5rem; font-weight: 800;
+      text-align: center; background: var(--ink); color: var(--sun);
+      border-radius: 18px; padding: 0.8rem; margin-bottom: 0.8rem;
+      border: 2.5px solid var(--ink); box-shadow: 4px 4px 0 rgba(0,0,0,0.25);
+    }
+    .clock-face .who {
+      font-size: 0.9rem; color: rgba(255,255,255,0.7); font-weight: 700;
+      display: block; margin-bottom: 0.2rem;
+    }
+    .grace-banner {
+      background: #fef3c7; border: 2.5px solid #f59e0b; border-radius: 12px;
+      padding: 0.7rem 1rem; font-weight: 800; font-size: 0.92rem;
+      margin-bottom: 0.8rem; animation: pulse 1s infinite alternate; display: none;
+    }
+    @keyframes pulse { from{opacity:1} to{opacity:0.6} }
+
+    .cat-selector { display: flex; gap: 0.5rem; margin-bottom: 0.8rem; flex-wrap: wrap; }
+    .cat-btn {
+      flex: 1; min-width: 85px; padding: 0.6rem 0.4rem; border-radius: 12px;
+      border: 2px solid #e5e7eb; cursor: pointer; font-weight: 800; font-size: 0.83rem;
+      background: #fff; text-align: center; transition: all 0.12s; font-family: 'Nunito', sans-serif;
+    }
+    .cat-btn small { display: block; font-weight: 600; font-size: 0.72rem; color: var(--muted); margin-top: 0.1rem; }
+    .cat-btn[data-cat="clock"].selected   { border-color: #bf360c; background: #fff3e0; }
+    .cat-btn[data-cat="calendar"].selected{ border-color: #2e7d32; background: #e8f5e9; }
+    .cat-btn[data-cat="event"].selected   { border-color: #6a1b9a; background: #f3e5f5; }
+
+    .cal-owner-card {
+      border-radius: 16px; padding: 1.4rem; text-align: center;
+      background: #e8f5e9; border: 2.5px solid var(--mint);
+      box-shadow: 4px 4px 0 var(--ink); margin-bottom: 1rem;
+    }
+    .cal-owner-name { font-family: 'Baloo 2', cursive; font-size: 1.5rem; font-weight: 800; }
+
+    /* Month ownership calendar (Calendar groups) */
+    .month-weekdays {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.35rem;
+      margin-bottom: 0.35rem; font-size: 0.72rem; font-weight: 900;
+      color: var(--muted); text-align: center;
+    }
+    .month-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.35rem;
+    }
+    .month-cell {
+      background: #fff; border: 2px solid #e5e7eb; border-radius: 12px;
+      padding: 0.35rem 0.4rem; min-height: 56px;
+    }
+    .month-cell.out { opacity: 0.35; }
+    .month-cell.today { border-color: var(--ink) !important; box-shadow: 2px 2px 0 var(--ink); }
+    .month-cell-top { display: flex; justify-content: space-between; align-items: center; }
+    .month-daynum { font-weight: 900; font-size: 0.8rem; }
+    .month-dot { width: 10px; height: 10px; border-radius: 99px; border: 2px solid var(--ink); display: inline-block; }
+    .month-owner { font-size: 0.68rem; font-weight: 800; margin-top: 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .month-legend { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 0.7rem; }
+    .month-legend-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; font-weight: 800; }
+
+    /* Calendar settings helpers */
+    .cal-mode-hint {
+      background: #f0f9ff; border: 2px solid var(--sky);
+      border-radius: var(--radius-sm); padding: 0.7rem 0.9rem;
+      font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 0.7rem;
+      display: none;
+    }
+    .cal-mode-hint.active { display: block; }
+
+    .wd-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.35rem 0; border-bottom: 1px solid #e5e7eb; font-weight: 700; font-size: 0.88rem;
+    }
+    .wd-row:last-child { border-bottom: none; }
+    .wd-table { margin-bottom: 0.8rem; }
+
+    .audit-row {
+      display: flex; gap: 0.5rem; align-items: flex-start;
+      border-bottom: 1px solid #f3f4f6; padding: 0.4rem 0; font-size: 0.82rem;
+    }
+    .audit-ts   { color: #9ca3af; font-weight: 800; white-space: nowrap; min-width: 42px; }
+    .audit-act  { font-weight: 900; white-space: nowrap; }
+    .audit-detail { color: #6b7280; }
+
+    .swap-card {
+      border: 2px dashed #c4b5fd; border-radius: 12px; padding: 0.7rem 1rem;
+      margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+    }
+    .swap-card-name { font-weight: 800; }
+
+    .mini-bar { height: 6px; border-radius: 4px; background: #e5e7eb; margin-top: 0.4rem; overflow: hidden; }
+    .mini-bar-fill { height: 100%; border-radius: 4px; }
+
+    .trade-info-box {
+      background: #f0f9ff; border: 2px solid var(--sky);
+      border-radius: var(--radius-sm); padding: 0.75rem 0.9rem;
+      margin-bottom: 0.8rem; font-size: 0.84rem; font-weight: 600; line-height: 1.5;
+    }
+
+    details.kow-collapse {
+      background: #fff; border: 2.5px solid var(--ink);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      margin-bottom: 0.85rem; overflow: hidden;
+    }
+    details.kow-collapse summary {
+      padding: 0.85rem 1.1rem; font-weight: 800; font-size: 0.93rem;
+      cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+      user-select: none; list-style: none;
+    }
+    details.kow-collapse summary::-webkit-details-marker { display: none; }
+    details.kow-collapse summary .kow-collapse-caret { font-size: 1rem; transition: transform 0.2s; }
+    details.kow-collapse[open] summary .kow-collapse-caret { transform: rotate(180deg); }
+    details.kow-collapse .kow-collapse-body { padding: 0 1.1rem 1rem; }
+    details.kow-collapse.kow-form { background: #fdfcff; }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <input class="nav-toggle" type="checkbox" id="nav-toggle">
+      <label class="nav-hamburger" for="nav-toggle">☰</label>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('parent') }}">Dashboard</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+        <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
+        <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
+        <a class="nav-item" href="{{ url_for('money') }}">Money</a>
+        {% if current_user.is_authenticated and current_user.role == 'parent' %}
+          <a class="nav-item" href="{{ url_for('parent_create_tasks') }}">Create Task</a>
+        {% endif %}
+        <a class="nav-item" href="{{ url_for('turns') }}">Turns</a>
+      </div>
+      <div class="navbar-nav">
+        <a class="nav-item" href="{{ url_for('logout') }}">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+
+    <h2>🔁 Turns</h2>
+
+    <div class="two-col-layout">
+
+      <!-- ══ LEFT ══ -->
+      <div>
+        <details class="kow-collapse kow-form">
+          <summary>➕ Create Turn Group <span class="kow-collapse-caret">▾</span></summary>
+          <div class="kow-collapse-body">
+            <form method="POST" action="{{ url_for('turns') }}">
+              {{ group_form.hidden_tag() }}
+              <div class="form-group">
+                <label class="form-control-label">Type</label>
+                <div class="cat-selector">
+                  <div class="cat-btn selected" data-cat="clock" onclick="selectCat('clock')">⏱ Clock<small>TV / Tablet</small></div>
+                  <div class="cat-btn" data-cat="calendar" onclick="selectCat('calendar')">📅 Calendar<small>Front Seat</small></div>
+                  <div class="cat-btn" data-cat="event" onclick="selectCat('event')">🎲 Event<small>Movie Pick</small></div>
+                </div>
+                <input type="hidden" name="category" id="cat-input" value="clock">
+              </div>
+              <div class="form-group">
+                {{ group_form.name.label(class="form-control-label") }}
+                {{ group_form.name(class="form-control", placeholder="e.g. TV, Front Seat") }}
+              </div>
+              <div class="form-group" id="dur-field">
+                {{ group_form.turn_duration_min.label(class="form-control-label") }}
+                {{ group_form.turn_duration_min(class="form-control", placeholder="30") }}
+              </div>
+              <div class="form-group" id="quota-field">
+                {{ group_form.daily_quota_min.label(class="form-control-label") }}
+                {{ group_form.daily_quota_min(class="form-control", placeholder="120") }}
+              </div>
+              {{ group_form.submit(class="btn btn-success btn-block") }}
+            </form>
+          </div>
+        </details>
+
+        <details class="kow-collapse" open>
+          <summary>📦 Your Turn Groups <span class="kow-collapse-caret">▾</span></summary>
+          <div class="kow-collapse-body">
+            {% if groups %}
+              {% for g in groups %}
+                <div class="group-row">
+                  <div>
+                    <div class="group-name">{{ g.name }}
+                      <span class="cat-badge cat-{{ g.category }}">
+                        {% if g.category == 'clock' %}⏱ Clock
+                        {% elif g.category == 'calendar' %}📅 Calendar
+                        {% else %}🎲 Event{% endif %}
+                      </span>
+                    </div>
+                    {% if g.category == 'clock' %}
+                      <div class="group-meta">{{ g.turn_duration_min }} min turns · {{ g.daily_quota_min }} min/day</div>
+                    {% endif %}
+                  </div>
+                  <div style="display:flex; gap:0.35rem; align-items:center;">
+                    <a class="btn btn-primary btn-sm" href="{{ url_for('turns', group_id=g.id) }}">Open</a>
+                    <form method="POST" action="{{ url_for('turns_delete_group', group_id=g.id) }}" onsubmit="return confirm('Delete this turn group? This cannot be undone.');" style="margin:0;">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <p class="empty-msg">No groups yet. Create one above!</p>
+            {% endif %}
+          </div>
+        </details>
+      </div>
+
+      <!-- ══ RIGHT ══ -->
+      <div>
+        {% if selected_group %}
+          <div class="section-card">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+              <h3 class="section-title" style="margin:0;">
+                🎮 {{ selected_group.name }}
+                <span class="cat-badge cat-{{ selected_group.category }}">
+                  {% if selected_group.category == 'clock' %}⏱ Clock
+                  {% elif selected_group.category == 'calendar' %}📅 Calendar
+                  {% else %}🎲 Event{% endif %}
+                </span>
+              </h3>
+              <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                <span style="font-size:0.8rem; font-weight:700; color:var(--muted);">{{ day.strftime('%A, %d %b') }}</span>
+                <form method="POST" action="{{ url_for('turns_delete_group', group_id=selected_group.id) }}" onsubmit="return confirm('Delete this turn group? This cannot be undone.');" style="margin:0;">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-danger btn-sm" type="submit">Delete Group</button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Tab bar -->
+            <div class="tab-bar">
+              <button class="tab-btn active" onclick="showTab('tab-queue', this)">
+                {% if selected_group.category == 'calendar' %}📅 Today{% else %}🟢 Queue{% endif %}
+              </button>
+              {% if selected_group.category == 'clock' %}
+                <button class="tab-btn" onclick="showTab('tab-clock', this)">⏱ Timer</button>
+              {% endif %}
+              {% if selected_group.category != 'calendar' %}
+                <button class="tab-btn" onclick="showTab('tab-actions', this)">⚡ Actions</button>
+              {% endif %}
+              <button class="tab-btn" onclick="showTab('tab-settings', this)">⚙️ Settings</button>
+              {% if selected_group.category != 'calendar' %}
+                <button class="tab-btn" onclick="showTab('tab-log', this)">📋 Log</button>
+              {% endif %}
+            </div>
+
+            <!-- ═══ TAB: Queue ═══ -->
+            <div id="tab-queue" class="tab-pane active">
+
+              {% if selected_group.category == 'calendar' %}
+                {% if selected_group.cal_paused %}
+                  <div class="alert alert-warning">⏸ Rotation paused — holiday mode is ON. Go to Settings to unpause.</div>
+                {% endif %}
+                {% if cal_owner %}
+                  <div class="cal-owner-card">
+                    <div style="font-size:2.5rem;">📅</div>
+                    <div class="cal-owner-name">{{ cal_owner.username }}'s Turn Today</div>
+                    <div style="font-size:0.82rem; color:#555; font-weight:700; margin-top:0.3rem;">
+                      {{ selected_group.cal_mode | replace('_',' ') | title }}
+                      {% if selected_group.cal_mode == 'n_day' %} · Every {{ selected_group.cal_n_days }} day(s){% endif %}
+                    </div>
+                  </div>
+                {% else %}
+                  <div style="text-align:center; padding:1.5rem; background:#f9fafb; border:2px dashed #d1d5db; border-radius:14px; margin-bottom:1rem;">
+                    <p style="font-weight:700; font-size:1rem;">No assignment for today.</p>
+                    <p class="empty-msg">Go to ⚙️ Settings to configure the schedule.</p>
+                  </div>
+                {% endif %}
+
+                {% if cal_month_weeks %}
+                  <div style="background:#fff; border:2.5px solid var(--ink); border-radius:16px; padding:0.9rem 1rem; margin-bottom:0.9rem; box-shadow:var(--shadow);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.6rem;">
+                      <div style="font-weight:900;">🗓 {{ cal_month_label }}</div>
+                      <div style="font-size:0.78rem; color:var(--muted); font-weight:800;">Colors show the owner</div>
+                    </div>
+
+                    <div class="month-weekdays">
+                      <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
+                    </div>
+                    <div class="month-grid">
+                      {% for week in cal_month_weeks %}
+                        {% for cell in week %}
+                          <div class="month-cell {{ '' if cell.in_month else 'out' }} {{ 'today' if cell.is_today else '' }}"
+                               style="{% if cell.color_var %}border-color: var({{ cell.color_var }});{% endif %}">
+                            <div class="month-cell-top">
+                              <span class="month-daynum">{{ cell.date.day }}</span>
+                              {% if cell.owner %}<span class="month-dot" style="background: var({{ cell.color_var }});"></span>{% endif %}
+                            </div>
+                            <div class="month-owner">{{ cell.owner.username if cell.owner else '' }}</div>
+                          </div>
+                        {% endfor %}
+                      {% endfor %}
+                    </div>
+
+                    {% if cal_month_legend %}
+                      <div class="month-legend">
+                        {% for item in cal_month_legend %}
+                          <div class="month-legend-item">
+                            <span class="month-dot" style="background: var({{ item.color_var }});"></span>
+                            <span>{{ item.child.username }}</span>
+                          </div>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+
+                {% if selected_group.cal_mode == 'weekday' and weekday_rules %}
+                  <div style="background:#f8fffe; border:2px solid var(--sky); border-radius:var(--radius-sm); padding:0.8rem 1rem; margin-bottom:0.8rem;">
+                    <div style="font-weight:800; font-size:0.88rem; margin-bottom:0.5rem;">📆 This Week's Schedule</div>
+                    {% set day_names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+                    {% for rule in weekday_rules | sort(attribute='weekday') %}
+                      <div class="wd-row">
+                        <span>{{ day_names[rule.weekday] }}</span>
+                        <span style="font-weight:900;">{{ rule.child.username if rule.child else '—' }}</span>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+
+                <details class="kow-collapse kow-form">
+                  <summary>👧 Add Kids to Group <span class="kow-collapse-caret">▾</span></summary>
+                  <div class="kow-collapse-body">
+                    <form method="POST" action="{{ url_for('turns_add_member', group_id=selected_group.id) }}">
+                      {{ add_member_form.hidden_tag() }}
+                      <div class="form-group">{{ add_member_form.child_id(class="form-control") }}</div>
+                      {{ add_member_form.submit(class="btn btn-primary btn-block") }}
+                    </form>
+                  </div>
+                </details>
+
+              {% else %}
+                {% if queue_data and queue_data.queue %}
+                  {% set now_id  = queue_data.now.id  if queue_data.now  else None %}
+                  {% set next_id = queue_data.next.id if queue_data.next else None %}
+
+                  {% if selected_group.category == 'event' and queue_data.now %}
+                    <form method="POST" action="{{ url_for('turns_nudge', group_id=selected_group.id) }}" style="margin-bottom:0.8rem;">
+                      {{ nudge_form.hidden_tag() }}
+                      <button class="btn btn-secondary btn-block" type="submit">👋 Nudge {{ queue_data.now.username }} — taking too long?</button>
+                    </form>
+                  {% endif %}
+
+                  {% for item in queue_data.queue %}
+                    {% set c       = item.child %}
+                    {% set is_now  = (c.id == now_id) %}
+                    {% set is_next = (c.id == next_id and selected_group.selection_mode != 'random') %}
+                    {% set member  = item.member %}
+                    <div class="turn-card {{ 'turn-now' if is_now else 'turn-next' if is_next else '' }}">
+                      <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                        <div class="turn-name">
+                          {% if is_now %}<span class="turn-status status-now">🟢 NOW</span>
+                          {% elif is_next %}<span class="turn-status status-next">🟡 NEXT</span>
+                          {% else %}<span style="font-size:1rem;">⚪</span>{% endif %}
+                          {{ c.username }}
+                        </div>
+                        {% if selected_group.category == 'clock' %}
+                          <div style="font-weight:900; font-size:0.95rem;">{{ item.remaining_min }}m left</div>
+                        {% endif %}
+                      </div>
+                      {% if selected_group.category == 'clock' %}
+                        <div style="font-size:0.78rem; color:var(--muted); font-weight:700; margin-top:0.25rem;">
+                          Used {{ item.used_min }} / {{ selected_group.daily_quota_min }} min
+                        </div>
+                        <div class="mini-bar">
+                          {% set pct = [(item.used_sec / (selected_group.daily_quota_min * 60) * 100)|int, 100]|min %}
+                          <div class="mini-bar-fill" style="width:{{ pct }}%; background:{% if pct > 80 %}var(--coral){% elif pct > 50 %}var(--peach){% else %}var(--mint){% endif %};"></div>
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+
+                  <form method="POST" action="{{ url_for('turns_next', group_id=selected_group.id) }}" style="margin-top:0.8rem;">
+                    {{ next_form.hidden_tag() }}
+                    <button class="btn btn-success btn-block" type="submit">
+                      {% if selected_group.category == 'event' %}✅ Done – Next!{% else %}⏭ Next Turn ({{ selected_group.turn_duration_min }} min){% endif %}
+                    </button>
+                  </form>
+                {% else %}
+                  <p class="empty-msg">{% if not queue_data %}Add kids to start.{% else %}Everyone's done for today! 🎉{% endif %}</p>
+                {% endif %}
+
+                <details class="kow-collapse kow-form" style="margin-top:1rem; border-color:var(--sky);">
+                  <summary>👧 Add Kids to Group <span class="kow-collapse-caret">▾</span></summary>
+                  <div class="kow-collapse-body">
+                    <form method="POST" action="{{ url_for('turns_add_member', group_id=selected_group.id) }}">
+                      {{ add_member_form.hidden_tag() }}
+                      <div class="form-group">{{ add_member_form.child_id(class="form-control") }}</div>
+                      {{ add_member_form.submit(class="btn btn-primary btn-block") }}
+                    </form>
+                  </div>
+                </details>
+              {% endif %}
+            </div><!-- /tab-queue -->
+
+            <!-- ═══ TAB: Clock Timer ═══ -->
+            {% if selected_group.category == 'clock' %}
+            <div id="tab-clock" class="tab-pane">
+              <div id="grace-banner" class="grace-banner">⚠️ <strong>2-minute warning!</strong> Save your game now!</div>
+
+              {% if session_view and session_view.shared_users %}
+                <div class="alert alert-info" style="font-size:0.85rem;">🤝 Shared with: {{ session_view.shared_users | map(attribute='username') | join(', ') }}</div>
+              {% endif %}
+
+              <div id="turn-clock"
+                   data-running="{{ 1 if (session_view and session_view.running) else 0 }}"
+                   data-auto-enabled="{{ 1 if selected_group.auto_advance_enabled else 0 }}"
+                   data-remaining="{{ session_view.turn_remaining_sec if session_view and session_view.turn_remaining_sec is not none else '' }}"
+                   data-grace="{{ selected_group.grace_period_sec or 120 }}"
+                   data-group-id="{{ selected_group.id }}">
+                <div class="clock-face">
+                  <span class="who">{{ session_view.active_child.username if session_view and session_view.active_child else '—' }}</span>
+                  <span id="turn-clock-countdown">--</span>
+                </div>
+              </div>
+
+              <form id="start-turn-form" method="POST" action="{{ url_for('turns_start', group_id=selected_group.id) }}" style="margin-bottom:0.5rem;">
+                {{ start_form.hidden_tag() }}
+                <button class="btn btn-success btn-block" type="submit" {% if session_view and session_view.running %}disabled{% endif %}>
+                  ▶ {% if session_view and session_view.running %}Running…{% else %}Start / Resume{% endif %}
+                </button>
+              </form>
+              <form id="pause-turn-form" method="POST" action="{{ url_for('turns_pause', group_id=selected_group.id) }}" style="margin-bottom:0.8rem;">
+                {{ pause_form.hidden_tag() }}
+                <button class="btn btn-secondary btn-block" type="submit" {% if not (session_view and session_view.running) %}disabled{% endif %}>⏸ Pause / Stop</button>
+              </form>
+
+              <details class="kow-collapse kow-form" style="border-color:var(--sky);">
+                <summary>🤝 Join Shared Turn <span class="kow-collapse-caret">▾</span></summary>
+                <div class="kow-collapse-body">
+                  <p style="font-size:0.83rem; color:var(--muted); font-weight:600; margin-bottom:0.6rem;">Time deducted from both kids' daily quota.</p>
+                  <form method="POST" action="{{ url_for('turns_join_shared', group_id=selected_group.id) }}">
+                    {{ join_form.hidden_tag() }}
+                    {{ join_form.child_id(class="form-control", style="margin-bottom:0.4rem;") }}
+                    {{ join_form.submit(class="btn btn-primary btn-block") }}
+                  </form>
+                </div>
+              </details>
+            </div>
+            {% endif %}
+
+            <!-- ═══ TAB: Actions (Clock & Event only) ═══ -->
+            {% if selected_group.category != 'calendar' %}
+            <div id="tab-actions" class="tab-pane">
+
+              <details class="kow-collapse kow-form" style="border-color:var(--peach);">
+                <summary>⏩ Skip Turn <span class="kow-collapse-caret">▾</span></summary>
+                <div class="kow-collapse-body">
+                  <p style="font-size:0.83rem; color:var(--muted); font-weight:600; margin-bottom:0.6rem;">Moves the selected child to the very end of today's queue.</p>
+                  <form method="POST" action="{{ url_for('turns_skip', group_id=selected_group.id) }}">
+                    {{ skip_form.hidden_tag() }}
+                    {{ skip_form.child_id(class="form-control", style="margin-bottom:0.4rem;") }}
+                    {{ skip_form.submit(class="btn btn-warning btn-block") }}
+                  </form>
+                </div>
+              </details>
+
+              <details class="kow-collapse kow-form" style="border-color:var(--lavender);">
+                <summary>🔄 Swap Turns <span class="kow-collapse-caret">▾</span></summary>
+                <div class="kow-collapse-body">
+                  <p style="font-size:0.83rem; color:var(--muted); font-weight:600; margin-bottom:0.6rem;">Swap the queue position of two children.</p>
+                  <form method="POST" action="{{ url_for('turns_swap_request', group_id=selected_group.id) }}">
+                    {{ swap_form.hidden_tag() }}
+                    <div class="form-group">
+                      <label class="form-control-label">Child A</label>
+                      {{ swap_form.requester_id(class="form-control") }}
+                    </div>
+                    <div class="form-group">
+                      <label class="form-control-label">↔ Child B</label>
+                      {{ swap_form.target_id(class="form-control") }}
+                    </div>
+                    {{ swap_form.submit(class="btn btn-primary btn-block") }}
+                  </form>
+                </div>
+              </details>
+
+              {% if pending_swaps %}
+                <details class="kow-collapse" style="border-color:var(--lavender);" open>
+                  <summary>⏳ Pending Swaps <span class="kow-collapse-caret">▾</span></summary>
+                  <div class="kow-collapse-body">
+                    {% for sw in pending_swaps %}
+                      {% set u_r = sw.requester %}
+                      {% set u_t = sw.target %}
+                      <div class="swap-card">
+                        <div class="swap-card-name">{{ u_r.username if u_r else sw.requester_id }} ↔ {{ u_t.username if u_t else sw.target_id }}</div>
+                        <div style="display:flex; gap:0.4rem;">
+                          <form method="POST" action="{{ url_for('turns_swap_resolve', group_id=selected_group.id, swap_id=sw.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="accepted" value="1">
+                            <button class="btn btn-success btn-sm" type="submit">✅</button>
+                          </form>
+                          <form method="POST" action="{{ url_for('turns_swap_resolve', group_id=selected_group.id, swap_id=sw.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="accepted" value="0">
+                            <button class="btn btn-danger btn-sm" type="submit">❌</button>
+                          </form>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </details>
+              {% endif %}
+
+              <!-- Trade points for a turn — correct semantics -->
+              <details class="kow-collapse kow-form" style="border-color:var(--sky);">
+                <summary>💰 Trade Points for a Turn <span class="kow-collapse-caret">▾</span></summary>
+                <div class="kow-collapse-body">
+                  <div class="trade-info-box">
+                    <strong>How it works:</strong><br>
+                    The <strong>Buyer</strong> pays points and moves to the front of the queue.<br>
+                    The <strong>Seller</strong> receives those points but <strong>skips their turn today</strong>.<br>
+                    Points are automatically transferred between the two kids.
+                  </div>
+                  <form method="POST" action="{{ url_for('turns_trade', group_id=selected_group.id) }}">
+                    {{ trade_form.hidden_tag() }}
+                    <div class="form-group">
+                      <label class="form-control-label">🛒 Buyer — wants an earlier turn</label>
+                      {{ trade_form.giver_id(class="form-control") }}
+                    </div>
+                    <div class="form-group">
+                      <label class="form-control-label">💸 Seller — gives up their turn</label>
+                      {{ trade_form.receiver_id(class="form-control") }}
+                    </div>
+                    <div class="form-group">
+                      <label class="form-control-label">⭐ Points the buyer pays</label>
+                      {{ trade_form.points(class="form-control", placeholder="e.g. 50") }}
+                    </div>
+                    {{ trade_form.submit(class="btn btn-info btn-block") }}
+                  </form>
+                </div>
+              </details>
+
+            </div><!-- /tab-actions -->
+            {% endif %}
+
+            <!-- ═══ TAB: Settings ═══ -->
+            <div id="tab-settings" class="tab-pane">
+
+              {# ── CLOCK SETTINGS ── #}
+              {% if selected_group.category == 'clock' %}
+              <details class="kow-collapse kow-form" style="border-color:var(--sun);" open>
+                <summary>⏱ Timer Settings <span class="kow-collapse-caret">▾</span></summary>
+                <div class="kow-collapse-body">
+                  <form method="POST" action="{{ url_for('turns_settings', group_id=selected_group.id) }}">
+                    {{ settings_form.hidden_tag() }}
+                    <div class="form-group">
+                      {{ settings_form.selection_mode.label(class="form-control-label") }}
+                      {{ settings_form.selection_mode(class="form-control") }}
+                    </div>
+                    <div class="form-check" style="margin-bottom:0.5rem;">
+                      {{ settings_form.auto_advance_enabled(class="form-check-input") }}
+                      {{ settings_form.auto_advance_enabled.label(class="form-check-label") }}
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
+                      <div class="form-group">
+                        {{ settings_form.auto_advance_value.label(class="form-control-label") }}
+                        {{ settings_form.auto_advance_value(class="form-control", placeholder="5") }}
+                      </div>
+                      <div class="form-group">
+                        {{ settings_form.auto_advance_unit.label(class="form-control-label") }}
+                        {{ settings_form.auto_advance_unit(class="form-control") }}
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-control-label">⏰ Grace Period Warning (seconds before time ends)</label>
+                      {{ settings_form.grace_period_sec(class="form-control", placeholder="120") }}
+                    </div>
+                    <div class="form-check" style="margin-bottom:0.8rem;">
+                      {{ settings_form.deduct_overrun(class="form-check-input") }}
+                      {{ settings_form.deduct_overrun.label(class="form-check-label") }}
+                    </div>
+                    {{ settings_form.submit(class="btn btn-primary btn-block") }}
+                  </form>
+                </div>
+              </details>
+              {% endif %}
+
+              {# ── CALENDAR SETTINGS — clean 3-block layout ── #}
+              {% if selected_group.category == 'calendar' %}
+
+              <!-- Block 1: Rotation mode -->
+              <details class="kow-collapse kow-form" style="border-color:var(--mint);" open>
+                <summary>📅 Rotation Mode <span class="kow-collapse-caret">▾</span></summary>
+                <div class="kow-collapse-body">
+                  <form method="POST" action="{{ url_for('turns_cal_settings', group_id=selected_group.id) }}">
+                    {{ cal_form.hidden_tag() }}
+
+                    <div class="form-group">
+                      {{ cal_form.cal_mode.label(class="form-control-label") }}
+                      {{ cal_form.cal_mode(class="form-control", id="cal_mode_select", onchange="showCalHelp(this.value)") }}
+                    </div>
+
+                    <!-- Context hints per mode -->
+                    <div id="cal-help-n_day" class="cal-mode-hint">
+                      📆 Kids take turns every X days. Set how many days each turn lasts below.
+                    </div>
+                    <div id="cal-help-weekday" class="cal-mode-hint">
+                      📅 Each day of the week is assigned to one child. Configure the weekday assignments in the section below.
+                    </div>
+                    <div id="cal-help-cyclical" class="cal-mode-hint">
+                      🔁 Automatic rotation based on the day of year — no extra setup needed.
+                    </div>
+
+                    <!-- N-day input (only relevant for n_day mode) -->
+                    <div id="cal-nday-field" class="form-group" style="display:none;">
+                      {{ cal_form.cal_n_days.label(class="form-control-label") }}
+                      {{ cal_form.cal_n_days(class="form-control", placeholder="e.g. 1 = daily, 7 = weekly") }}
+                    </div>
+
+                    <!-- Holiday pause -->
+                    <div style="background:#fffde7; border:2px solid var(--sun); border-radius:var(--radius-sm); padding:0.7rem 0.9rem; margin-bottom:0.7rem;">
+                      <div class="form-check">
+                        {{ cal_form.cal_paused(class="form-check-input") }}
+                        <label class="form-check-label" style="font-weight:800;">⏸ Pause Rotation (Holiday / Vacation)</label>
+                      </div>
+                      <p style="font-size:0.78rem; color:var(--muted); font-weight:600; margin-top:0.3rem; margin-left:1.6rem;">
+                        Rotation won't advance while paused. Uncheck to resume.
+                      </p>
+                    </div>
+
+                    {{ cal_form.submit(class="btn btn-success btn-block") }}
+                  </form>
+                </div>
+              </details>
+
+              <!-- Block 2: Weekday assignments -->
+              <details class="kow-collapse kow-form" style="border-color:var(--mint);">
+                <summary>📆 Weekday Assignments <span class="kow-collapse-caret">▾</span></summary>
+                <div class="kow-collapse-body">
+                  <p style="font-size:0.83rem; color:var(--muted); font-weight:600; margin-bottom:0.7rem;">
+                    Used when mode is set to "Weekday". Assign who gets the turn on each day.
+                  </p>
+
+                  {% if weekday_rules %}
+                    <div style="background:#f8fffe; border:2px solid #9ca3af; border-radius:var(--radius-sm); padding:0.7rem 0.9rem; margin-bottom:0.8rem;">
+                      <div style="font-weight:800; font-size:0.85rem; margin-bottom:0.4rem;">Current Assignments</div>
+                      {% set day_names = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+                      {% for rule in weekday_rules | sort(attribute='weekday') %}
+                        <div class="wd-row">
+                          <span>{{ day_names[rule.weekday] }}</span>
+                          <span style="font-weight:900;">{{ rule.child.username if rule.child else '—' }}</span>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+
+                  <form method="POST" action="{{ url_for('turns_weekday_rule', group_id=selected_group.id) }}">
+                    {{ wd_form.hidden_tag() }}
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.5rem;">
+                      <div>
+                        <label class="form-control-label">Day</label>
+                        {{ wd_form.weekday(class="form-control") }}
+                      </div>
+                      <div>
+                        <label class="form-control-label">Child</label>
+                        {{ wd_form.child_id(class="form-control") }}
+                      </div>
+                    </div>
+                    {{ wd_form.submit(class="btn btn-primary btn-block") }}
+                  </form>
+                </div>
+              </details>
+
+              {% endif %}
+
+              {# ── EVENT SETTINGS ── #}
+              {% if selected_group.category == 'event' %}
+              <details class="kow-collapse kow-form" style="border-color:var(--lavender);" open>
+                <summary>🎲 Event Settings <span class="kow-collapse-caret">▾</span></summary>
+                <div class="kow-collapse-body">
+                  <p style="font-size:0.83rem; color:var(--muted); font-weight:600; margin-bottom:0.7rem;">
+                    Event queues advance only when you press "Done – Next!". No timer needed.
+                  </p>
+                </div>
+              </details>
+
+              {% endif %}
+
+            </div><!-- /tab-settings -->
+
+            <!-- ═══ TAB: Log (Clock & Event only) ═══ -->
+            {% if selected_group.category != 'calendar' %}
+            <div id="tab-log" class="tab-pane">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+                <div style="font-weight:800; font-size:0.9rem;">📋 Today's Activity</div>
+                <a href="{{ url_for('turns_history', group_id=selected_group.id) }}" style="font-size:0.8rem; font-weight:800;">Full history →</a>
+              </div>
+              {% if audit_log %}
+                {% for entry in audit_log %}
+                  <div class="audit-row">
+                    <span class="audit-ts">{{ entry.ts.strftime('%H:%M') }}</span>
+                    <span class="audit-act">
+                      {% if entry.action == 'start' %}▶
+                      {% elif entry.action == 'pause' %}⏸
+                      {% elif entry.action == 'next' %}⏭
+                      {% elif entry.action == 'skip' %}⏩
+                      {% elif entry.action == 'swap_accepted' %}🔄
+                      {% elif entry.action == 'trade_accepted' %}💰
+                      {% elif entry.action == 'nudge' %}👋
+                      {% elif entry.action == 'shared_join' %}🤝
+                      {% else %}•{% endif %}
+                      {{ entry.action | replace('_',' ') }}
+                    </span>
+                    <span class="audit-detail">{{ entry.detail or '' }}</span>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <p class="empty-msg">No activity logged yet today.</p>
+              {% endif %}
+            </div>
+            {% endif %}
+
+          </div><!-- /section-card -->
+
+        {% else %}
+          <div class="section-card" style="text-align:center; padding:2rem;">
+            <div style="font-size:3rem; margin-bottom:0.5rem;">👈</div>
+            <h3 style="margin-bottom:0.5rem;">Pick a Group</h3>
+            <p class="empty-msg">Create a group on the left, then open it to manage turns.</p>
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    function showTab(id, btn) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    function selectCat(cat) {
+      document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('selected'));
+      document.querySelector('.cat-btn[data-cat="' + cat + '"]').classList.add('selected');
+      document.getElementById('cat-input').value = cat;
+      const showClock = cat === 'clock';
+      document.getElementById('dur-field').style.display   = showClock ? '' : 'none';
+      document.getElementById('quota-field').style.display = showClock ? '' : 'none';
+    }
+
+    function showCalHelp(mode) {
+      ['n_day','weekday','cyclical'].forEach(m => {
+        const hint = document.getElementById('cal-help-' + m);
+        if (hint) hint.classList.toggle('active', m === mode);
+      });
+      const ndayField = document.getElementById('cal-nday-field');
+      if (ndayField) ndayField.style.display = (mode === 'n_day') ? '' : 'none';
+    }
+    const calSel = document.getElementById('cal_mode_select');
+    if (calSel) showCalHelp(calSel.value);
+
+    /* ── Clock countdown ── */
+    (function () {
+      const clockEl     = document.getElementById('turn-clock');
+      const countdownEl = document.getElementById('turn-clock-countdown');
+      const pauseForm   = document.getElementById('pause-turn-form');
+      const startForm   = document.getElementById('start-turn-form');
+      const graceBanner = document.getElementById('grace-banner');
+      if (!clockEl || !countdownEl) return;
+
+      const running      = clockEl.dataset.running === '1';
+      const autoEnabled  = clockEl.dataset.autoEnabled === '1';
+      const remainingStr = clockEl.dataset.remaining;
+      const graceSec     = parseInt(clockEl.dataset.grace || '120', 10);
+      const groupId      = clockEl.dataset.groupId;
+      const initialRemaining = remainingStr === '' ? null : parseInt(remainingStr, 10);
+
+      function fmt(sec) {
+        if (sec === null || Number.isNaN(sec)) return '--';
+        const s = Math.max(0, sec);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const r = s % 60;
+        return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}` : `${m}:${String(r).padStart(2,'0')}`;
+      }
+
+      if (autoEnabled && !running && startForm) { startForm.submit(); return; }
+      if (!running || initialRemaining === null || initialRemaining <= 0) {
+        countdownEl.textContent = running ? '0:00' : 'Paused';
+        return;
+      }
+
+      let remaining  = initialRemaining;
+      let graceShown = remaining <= graceSec;
+      if (graceShown && graceBanner) graceBanner.style.display = 'block';
+      countdownEl.textContent = fmt(remaining);
+
+      const tick = setInterval(() => {
+        remaining -= 1;
+        if (!graceShown && remaining <= graceSec) {
+          graceShown = true;
+          if (graceBanner) graceBanner.style.display = 'block';
+          if (groupId) fetch(`/turns/${groupId}/grace_check`).catch(() => {});
+        }
+        if (remaining <= 0) { clearInterval(tick); if (pauseForm) pauseForm.submit(); return; }
+        countdownEl.textContent = fmt(remaining);
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>

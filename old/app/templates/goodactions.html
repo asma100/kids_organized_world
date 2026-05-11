@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Good Actions – KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <style>
+    .points-hero {
+      background: linear-gradient(135deg, #fffde7, #fff8e1);
+      border: 2.5px solid var(--ink);
+      border-radius: 18px;
+      padding: 1.2rem 1.5rem;
+      display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+    .points-hero h2 { margin: 0; }
+    .points-hero .pts-big {
+      font-family: 'Baloo 2', cursive;
+      font-size: 2.2rem;
+      font-weight: 800;
+      background: var(--sun);
+      border: 2.5px solid var(--ink);
+      border-radius: 99px;
+      padding: 0.1rem 1.2rem;
+      box-shadow: 3px 3px 0 var(--ink);
+      margin-left: auto;
+    }
+
+    .action-item {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem;
+      padding: 0.85rem 0;
+      border-bottom: 2px dashed #e5e7eb;
+    }
+    .action-item:last-child { border-bottom: none; }
+
+    .reward-card {
+      padding: 0.85rem 0;
+      border-bottom: 2px dashed #e5e7eb;
+    }
+    .reward-card:last-child { border-bottom: none; }
+    .reward-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+    .reward-btns { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.6rem; }
+
+    .unlock-tag {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      font-size: 0.78rem; font-weight: 800;
+      background: var(--mint);
+      border: 1.5px solid var(--ink);
+      border-radius: 99px;
+      padding: 0.15rem 0.6rem;
+    }
+    .lock-tag {
+      font-size: 0.78rem; font-weight: 700; color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <input class="nav-toggle" type="checkbox" id="nav-toggle">
+      <label class="nav-hamburger" for="nav-toggle">☰</label>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('home') }}">Home</a>
+        <a class="nav-item" href="{{ url_for('taskList') }}">Tasks</a>
+        <a class="nav-item" href="{{ url_for('goodactions') }}">Good Actions</a>
+        <a class="nav-item" href="{{ url_for('badactions') }}">Bad Actions</a>
+        <a class="nav-item" href="{{ url_for('money') }}">Money</a>
+        {% if current_user.is_authenticated and current_user.role == 'parent' %}
+          <a class="nav-item" href="{{ url_for('parent_create_tasks') }}">Create Task</a>
+        {% endif %}
+        <a class="nav-item" href="{{ url_for('turns') }}">Turns</a>
+      </div>
+      <div class="navbar-nav">
+        <a class="nav-item" href="{{ url_for('logout') }}">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}{% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}{% endif %}
+    {% endwith %}
+
+    <!-- Points Hero -->
+    <div class="points-hero">
+      <h2 style="font-size:1.7rem;">⭐ Good Actions</h2>
+      <div class="pts-big">
+        ⭐ {{ (target_user.points if target_user else current_user.points) }} pts
+      </div>
+    </div>
+
+    <div class="two-col-layout">
+
+      <!-- LEFT: Actions -->
+      <div>
+
+        <details class="kow-collapse kow-green" open>
+          <summary>
+            📋 Actions You Can Do
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+
+            {% if actions %}
+              {% for action in actions %}
+                <div class="action-item">
+                  <div class="action-info">
+                    <strong style="font-size:0.95rem;">{{ action.name }}</strong>
+                    <span class="action-badge good-badge">+{{ action.points_value }} pts</span>
+                    {% if action.description %}
+                      <p class="action-desc">{{ action.description }}</p>
+                    {% endif %}
+                  </div>
+                  <div class="action-btns">
+                    <form method="POST" action="{{ url_for('award_goodaction', action_id=action.id) }}" style="margin:0;">
+                      {{ form.hidden_tag() }}
+                      <button type="submit" class="btn btn-sm btn-success">✔ Done!</button>
+                    </form>
+                    <a href="{{ url_for('edit_goodaction', action_id=action.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <form method="POST" action="{{ url_for('delete_goodaction', action_id=action.id) }}"
+                          style="margin:0;" onsubmit="return confirm('Delete this action?');">
+                      {{ form.hidden_tag() }}
+                      <button type="submit" class="btn btn-sm btn-danger">🗑</button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <p class="empty-msg">No good actions yet. Create one! 👉</p>
+            {% endif %}
+
+          </div>
+        </details>
+
+        <details class="kow-collapse kow-form" style="margin-top:1rem;">
+          <summary>
+            ✨ New Good Action
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            <form method="POST" action="{{ url_for('create_goodaction') }}">
+              {{ form.hidden_tag() }}
+              <div class="form-group">
+                {{ form.name.label(class="form-control-label") }}
+                {{ form.name(class="form-control", placeholder="e.g. Cleaned my room") }}
+              </div>
+              <div class="form-group">
+                {{ form.description.label(class="form-control-label") }}
+                {{ form.description(class="form-control", rows=2, placeholder="What does this involve?") }}
+              </div>
+              <div class="form-group">
+                {{ form.points_value.label(class="form-control-label") }}
+                {{ form.points_value(class="form-control", placeholder="e.g. 5") }}
+              </div>
+              {{ form.submit(class="btn btn-success btn-block") }}
+            </form>
+          </div>
+        </details>
+
+      </div>
+
+      <!-- RIGHT: Rewards -->
+      <div>
+
+        <details class="kow-collapse kow-gold" open>
+          <summary>
+            🏆 Rewards
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            {% if rewards %}
+              {% for reward in rewards %}
+                {% set my_pts = (target_user.points if target_user else current_user.points) %}
+                {% set unlocked = my_pts >= reward.points_threshold %}
+                <div class="reward-card">
+                  <div class="reward-header">
+                    <div>
+                      <strong>{{ reward.name }}</strong>
+                      <span class="action-badge gold-badge" style="margin-left:0.4rem;">{{ reward.points_threshold }} pts</span>
+                      {% if reward.description %}
+                        <p class="action-desc">{{ reward.description }}</p>
+                      {% endif %}
+                    </div>
+                    {% if unlocked %}
+                      <span class="unlock-tag">🎉 Unlocked!</span>
+                    {% else %}
+                      <span class="lock-tag">🔒 {{ reward.points_threshold - my_pts }} pts to go</span>
+                    {% endif %}
+                  </div>
+
+                  {% if unlocked %}
+                    <div class="progress-bar-wrap" style="margin:0.4rem 0;">
+                      <div class="progress-bar-fill" style="width:100%; background:var(--mint);"></div>
+                    </div>
+                  {% else %}
+                    {% set pct = [(my_pts / reward.points_threshold * 100)|int, 100]|min %}
+                    <div class="progress-bar-wrap" style="margin:0.4rem 0;">
+                      <div class="progress-bar-fill" style="width:{{ pct }}%;"></div>
+                    </div>
+                  {% endif %}
+
+                  <div class="reward-btns">
+                    {% if unlocked and not reward.used_by_child(target_user.id if target_user else current_user.id) %}
+                      <form method="POST" action="{{ url_for('use_reward_route', reward_id=reward.id) }}" style="margin:0;">
+                        {{ form.hidden_tag() }}
+                        <button type="submit" class="btn btn-sm btn-success">🎁 Redeem</button>
+                      </form>
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('delete_reward_route', reward_id=reward.id) }}"
+                          style="margin:0;" onsubmit="return confirm('Remove reward?');">
+                      {{ form.hidden_tag() }}
+                      <button type="submit" class="btn btn-sm btn-danger">🗑</button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            {% else %}
+              <p class="empty-msg">No rewards yet!</p>
+            {% endif %}
+          </div>
+        </details>
+
+        <details class="kow-collapse kow-gold" style="margin-top:1rem;">
+          <summary>
+            💡 Suggested Rewards
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            {% for p in predefined_rewards %}
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; gap:0.5rem;">
+                <div>
+                  <span style="font-weight:800; font-size:0.9rem;">🏆 {{ p.name }}</span>
+                  <span class="action-badge gold-badge" style="margin-left:0.3rem;">{{ p.points_threshold }} pts</span>
+                </div>
+                <form method="POST" action="{{ url_for('create_reward_route') }}" style="margin:0;">
+                  {{ reward_form.hidden_tag() }}
+                  <input type="hidden" name="name" value="{{ p.name }}">
+                  <input type="hidden" name="points_threshold" value="{{ p.points_threshold }}">
+                  <input type="hidden" name="description" value="{{ p.description }}">
+                  <button type="submit" class="btn btn-sm btn-warning">+ Add</button>
+                </form>
+              </div>
+            {% endfor %}
+          </div>
+        </details>
+
+        <details class="kow-collapse kow-form" style="margin-top:1rem;">
+          <summary>
+            🏆 Custom Reward
+            <span class="kow-collapse-caret">▾</span>
+          </summary>
+          <div class="kow-collapse-body">
+            <form method="POST" action="{{ url_for('create_reward_route') }}">
+              {{ reward_form.hidden_tag() }}
+              <div class="form-group">
+                {{ reward_form.name.label(class="form-control-label") }}
+                {{ reward_form.name(class="form-control", placeholder="e.g. Movie Night") }}
+              </div>
+              <div class="form-group">
+                {{ reward_form.description.label(class="form-control-label") }}
+                {{ reward_form.description(class="form-control", rows=2) }}
+              </div>
+              <div class="form-group">
+                {{ reward_form.points_threshold.label(class="form-control-label") }}
+                {{ reward_form.points_threshold(class="form-control", placeholder="e.g. 20") }}
+              </div>
+              <div class="form-group">
+                {{ reward_form.points_cost.label(class="form-control-label") }}
+                {{ reward_form.points_cost(class="form-control", placeholder="Leave blank to match threshold") }}
+              </div>
+              {{ reward_form.submit(class="btn btn-warning btn-block") }}
+            </form>
+          </div>
+        </details>
+
+      </div>
+    </div>
+  </main>
+</body>
+</html>

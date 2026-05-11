@@ -1,7 +1,42 @@
-from datetime import datetime, date as date_type
+from datetime import datetime, date as date_type, timedelta
+from flask import current_app
+from itsdangerous import URLSafeTimedSerializer as Serializer
 from app import db, login_manager
 from flask_login import UserMixin
 import uuid
+
+
+def _nth_weekday_of_month(year: int, month: int, weekday: int, ordinal: int):
+    """Return a date for the nth weekday in a month.
+
+    weekday: 0=Mon..6=Sun
+    ordinal: 1..4 for 1st..4th, -1 for last
+    """
+    if ordinal == 0 or ordinal < -1 or ordinal > 4:
+        return None
+    if weekday < 0 or weekday > 6:
+        return None
+
+    def _last_day_of_month(y: int, m: int) -> date_type:
+        if m == 12:
+            next_month_first = date_type(y + 1, 1, 1)
+        else:
+            next_month_first = date_type(y, m + 1, 1)
+        return next_month_first - timedelta(days=1)
+
+    if ordinal == -1:
+        d = _last_day_of_month(year, month)
+        while d.weekday() != weekday:
+            d -= timedelta(days=1)
+        return d
+
+    first_of_month = date_type(year, month, 1)
+    offset = (weekday - first_of_month.weekday() + 7) % 7
+    first_matching = first_of_month + timedelta(days=offset)
+    candidate = first_matching + timedelta(days=7 * (ordinal - 1))
+    if candidate.month != month:
+        return None
+    return candidate
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -12,7 +47,7 @@ class User(db.Model, UserMixin):
     __tablename__ = 'user'
 
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(20), unique=True, nullable=False)
+    username = db.Column(db.String(20), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     image_file = db.Column(db.String(20), nullable=False, default='default.jpg')
     password = db.Column(db.String(60), nullable=False)
@@ -23,6 +58,23 @@ class User(db.Model, UserMixin):
     crosses = db.Column(db.Integer, nullable=False, default=0)
 
     tasks = db.relationship('Task', backref='user', lazy=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('username', 'parent_id', name='unique_username_per_parent'),
+    )
+
+    def get_auth_token(self, expires_sec=86400):
+        serializer = Serializer(current_app.config['SECRET_KEY'], expires_sec)
+        return serializer.dumps({'user_id': self.id}).decode('utf-8')
+
+    @staticmethod
+    def verify_auth_token(token):
+        serializer = Serializer(current_app.config['SECRET_KEY'])
+        try:
+            data = serializer.loads(token)
+        except Exception:
+            return None
+        return User.query.get(data.get('user_id'))
 
     def __repr__(self):
         return f"User('{self.username}', role='{self.role}')"
@@ -49,17 +101,28 @@ class Task(db.Model):
     #   'none'    — one-time task (default)
     #   'daily'   — repeats every day
     #   'hourly'  — repeats every N hours (see recurrence_hours)
+    #   'interval_days' — repeats every N days (see recurrence_interval_days)
     #   'weekly'  — repeats on specific days of the week (see recurrence_days)
     #   'monthly' — repeats on the same day of the month
+    #   'monthly_weekday' — repeats monthly on e.g. 1st Monday (see recurrence_monthly_ordinal/weekday)
     #   'yearly'  — repeats on the same date each year
     recurrence_type = db.Column(db.String(20), nullable=False, default='none')
 
     # For 'hourly': repeat every this many hours (e.g. 4 → every 4 hours)
     recurrence_hours = db.Column(db.Integer, nullable=True)
 
+    # For 'interval_days': repeat every this many days (e.g. 3 → every 3 days)
+    recurrence_interval_days = db.Column(db.Integer, nullable=True)
+
     # For 'weekly': comma-separated weekday numbers 0=Mon … 6=Sun
     # e.g. "0,2,4" means Mon, Wed, Fri
     recurrence_days = db.Column(db.String(20), nullable=True)
+
+    # For 'monthly_weekday': nth weekday of month, e.g. 1st Monday
+    # ordinal: 1..4 for 1st..4th, -1 for last
+    recurrence_monthly_ordinal = db.Column(db.Integer, nullable=True)
+    # weekday: 0=Mon..6=Sun
+    recurrence_monthly_weekday = db.Column(db.Integer, nullable=True)
 
     # Optional end date — recurrence stops after this date (NULL = forever)
     recurrence_end = db.Column(db.DateTime, nullable=True)
@@ -104,11 +167,25 @@ class Task(db.Model):
             # Hourly tasks appear every day from start date onwards
             return True
 
+        elif self.recurrence_type == 'interval_days':
+            interval = self.recurrence_interval_days or 0
+            if interval < 1:
+                return False
+            return ((check_date - task_start).days % interval) == 0
+
         elif self.recurrence_type == 'weekly':
             return check_date.weekday() in self.recurrence_days_list()
 
         elif self.recurrence_type == 'monthly':
             return check_date.day == task_start.day
+
+        elif self.recurrence_type == 'monthly_weekday':
+            ordinal = self.recurrence_monthly_ordinal
+            weekday = self.recurrence_monthly_weekday
+            if ordinal is None or weekday is None:
+                return False
+            target = _nth_weekday_of_month(check_date.year, check_date.month, int(weekday), int(ordinal))
+            return target is not None and check_date == target
 
         elif self.recurrence_type == 'yearly':
             return (check_date.month == task_start.month and
@@ -301,6 +378,34 @@ class TurnGroup(db.Model):
     # Fixed duration per turn (minutes)
     turn_duration_min = db.Column(db.Integer, nullable=False, default=30)
 
+    # Category: 'clock' (timed turns), 'calendar' (daily owner), 'event' (queue but no timer)
+    category = db.Column(db.String(20), nullable=False, default='clock')
+
+    # How to pick the next child: 'round_robin' or 'random'
+    selection_mode = db.Column(db.String(20), nullable=False, default='round_robin')
+
+    # Auto-advance settings (client-side timer triggers POST while the page is open)
+    auto_advance_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    auto_advance_value = db.Column(db.Integer, nullable=True)
+    auto_advance_unit = db.Column(db.String(10), nullable=False, default='minutes')
+    auto_advance_paused = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Grace period (seconds) used by the clock view
+    grace_period_sec = db.Column(db.Integer, nullable=False, default=120)
+
+    # If True, any overrun during grace is deducted from tomorrow
+    deduct_overrun = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Optional penalty integration (crosses -> minute deduction)
+    penalty_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    penalty_crosses = db.Column(db.Integer, nullable=False, default=3)
+    penalty_minutes = db.Column(db.Integer, nullable=False, default=15)
+
+    # Calendar rotation settings
+    cal_mode = db.Column(db.String(20), nullable=False, default='n_day')
+    cal_n_days = db.Column(db.Integer, nullable=False, default=1)
+    cal_paused = db.Column(db.Boolean, nullable=False, default=False)
+
     # Daily quota per child (minutes)
     daily_quota_min = db.Column(db.Integer, nullable=False, default=180)
 
@@ -318,6 +423,13 @@ class TurnGroupMember(db.Model):
     child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     position = db.Column(db.Integer, nullable=False, default=0)  # stable order within the group
 
+    # Turn penalties (minutes deducted from quota until cleared)
+    penalty_min_owed = db.Column(db.Integer, nullable=False, default=0)
+
+    # Birthday mode: temporarily prefer this child as today's starter
+    birthday_mode = db.Column(db.Boolean, nullable=False, default=False)
+    birthday_date = db.Column(db.Date, nullable=True)
+
     __table_args__ = (
         db.UniqueConstraint('group_id', 'child_id', name='uq_turn_group_child'),
     )
@@ -331,6 +443,10 @@ class TurnDailyUsage(db.Model):
     child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     day = db.Column(db.Date, nullable=False)
     used_min = db.Column(db.Integer, nullable=False, default=0)
+    used_sec = db.Column(db.Integer, nullable=False, default=0)
+
+    # Overrun during grace window (deducted from tomorrow if enabled)
+    overrun_sec = db.Column(db.Integer, nullable=False, default=0)
 
     __table_args__ = (
         db.UniqueConstraint('group_id', 'child_id', 'day', name='uq_turn_usage_day'),
@@ -345,8 +461,75 @@ class TurnDayState(db.Model):
     day = db.Column(db.Date, nullable=False)
     current_position = db.Column(db.Integer, nullable=False, default=0)
 
+    # Clock (timed resource) state
+    active_child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    session_started_at = db.Column(db.DateTime, nullable=True)
+    turn_remaining_sec = db.Column(db.Integer, nullable=True)
+
+    # Optional: when grace period began (not required by MVP UI)
+    grace_started_at = db.Column(db.DateTime, nullable=True)
+
+    # Grace period notification latch
+    grace_notified = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Shared turns: JSON list of child ids
+    shared_child_ids = db.Column(db.Text, nullable=True)
+
+    # Random wheel (initial selection) lock for the day
+    wheel_used = db.Column(db.Boolean, nullable=False, default=False)
+
     __table_args__ = (
         db.UniqueConstraint('group_id', 'day', name='uq_turn_state_day'),
+    )
+
+
+class TurnAuditLog(db.Model):
+    __tablename__ = 'turn_audit_log'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('turn_group.id'), nullable=False)
+    day = db.Column(db.Date, nullable=False)
+    ts = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    action = db.Column(db.String(40), nullable=False)
+    actor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    detail = db.Column(db.String(255), nullable=True)
+
+    actor = db.relationship('User', foreign_keys=[actor_id])
+    child = db.relationship('User', foreign_keys=[child_id])
+
+
+class TurnSwapRequest(db.Model):
+    __tablename__ = 'turn_swap_request'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('turn_group.id'), nullable=False)
+    day = db.Column(db.Date, nullable=False)
+
+    requester_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    target_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    requester = db.relationship('User', foreign_keys=[requester_id])
+    target = db.relationship('User', foreign_keys=[target_id])
+
+    status = db.Column(db.String(20), nullable=False, default='pending')  # pending/accepted/rejected/cancelled
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+
+
+class TurnWeekdayRule(db.Model):
+    __tablename__ = 'turn_weekday_rule'
+
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('turn_group.id'), nullable=False)
+    weekday = db.Column(db.Integer, nullable=False)  # 0=Mon..6=Sun
+    child_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    child = db.relationship('User', foreign_keys=[child_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('group_id', 'weekday', name='uq_turn_weekday_rule'),
     )
 
 

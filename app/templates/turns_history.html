@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turn History – KOW</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='kids.css') }}">
+  <style>
+    .history-table { width:100%; border-collapse:collapse; font-size:0.9rem; }
+    .history-table th {
+      text-align:left; font-weight:900; padding:0.5rem 0.7rem;
+      background:#f5f5f5; border-bottom:2px solid #ddd;
+    }
+    .history-table td { padding:0.45rem 0.7rem; border-bottom:1px solid #eee; font-weight:700; }
+    .history-table tr:hover td { background:#fafafa; }
+    .action-pill {
+      display:inline-block; padding:0.15rem 0.55rem; border-radius:999px;
+      font-size:0.78rem; font-weight:900; letter-spacing:.03em;
+    }
+    .a-start    { background:#c8e6c9; color:#1b5e20; }
+    .a-pause    { background:#fff3e0; color:#e65100; }
+    .a-next     { background:#e3f2fd; color:#0d47a1; }
+    .a-skip     { background:#fce4ec; color:#880e4f; }
+    .a-swap_accepted { background:#f3e5f5; color:#4a148c; }
+    .a-penalty_applied { background:#ffebee; color:#b71c1c; }
+    .a-birthday_mode { background:#fff9c4; color:#f57f17; }
+    .a-trade_accepted { background:#e0f7fa; color:#006064; }
+    .a-nudge    { background:#f1f8e9; color:#33691e; }
+    .a-grace_warn { background:#fff8e1; color:#f57f17; }
+    .a-shared_join { background:#e8eaf6; color:#1a237e; }
+    .filter-bar { display:flex; gap:0.5rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="navbar-brand" href="{{ url_for('home') }}">🌟 KOW</a>
+      <div class="navbar-nav mr-auto">
+        <a class="nav-item" href="{{ url_for('turns') }}">← Back to Turns</a>
+      </div>
+      <div class="navbar-nav">
+        <a class="nav-item" href="{{ url_for('logout') }}">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <main role="main" class="container">
+    <h2>📋 History – {{ group.name }}</h2>
+
+    <div class="filter-bar">
+      <form method="GET" style="display:flex; gap:0.5rem; align-items:center;">
+        <label style="font-weight:800;">Filter by date:</label>
+        <input type="date" name="day" value="{{ day.isoformat() if day else '' }}" class="form-control" style="width:auto;">
+        <button class="btn btn-primary" type="submit">Filter</button>
+        {% if day %}
+          <a href="{{ url_for('turns_history', group_id=group.id) }}" class="btn btn-secondary">Clear</a>
+        {% endif %}
+      </form>
+    </div>
+
+    {% if logs %}
+      <div class="section-card" style="padding:0;">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Date</th>
+              <th>Action</th>
+              <th>Child</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in logs %}
+              <tr>
+                <td>{{ entry.ts.strftime('%H:%M:%S') }}</td>
+                <td>{{ entry.day.strftime('%d %b') }}</td>
+                <td>
+                  <span class="action-pill a-{{ entry.action }}">
+                    {% if entry.action == 'start' %}▶ start
+                    {% elif entry.action == 'pause' %}⏸ pause
+                    {% elif entry.action == 'next' %}⏭ next
+                    {% elif entry.action == 'skip' %}⏩ skip
+                    {% elif entry.action == 'swap_accepted' %}🔄 swap
+                    {% elif entry.action == 'penalty_applied' %}⚠️ penalty
+                    {% elif entry.action == 'birthday_mode' %}🎂 birthday
+                    {% elif entry.action == 'trade_accepted' %}💰 trade
+                    {% elif entry.action == 'nudge' %}👋 nudge
+                    {% elif entry.action == 'grace_warn' %}⏰ grace
+                    {% elif entry.action == 'shared_join' %}🤝 shared
+                    {% else %}{{ entry.action | replace('_',' ') }}{% endif %}
+                  </span>
+                </td>
+                <td>{{ entry.child.username if entry.child else '—' }}</td>
+                <td style="color:#555;">{{ entry.detail or '' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-msg">No history found{% if day %} for this date{% endif %}.</p>
+    {% endif %}
+  </main>
+</body>
+</html>

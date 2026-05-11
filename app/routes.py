@@ -1,19 +1,46 @@
 from datetime import date as date_type, timedelta, datetime
-from flask import render_template, url_for, flash, redirect, request, session
-from app import app, db, bcrypt
+import calendar as pycal
+from flask import render_template, url_for, flash, redirect, request, session, jsonify, current_app
+from app import app, db, bcrypt, oauth
 from app.forms import (RegistrationForm, LoginForm, CreateTaskForm,
                        UpdateTaskForm, GoodActionForm, BadActionForm,
                        RewardForm, PunishmentForm, AddMoneyForm,
                        SpendMoneyForm, SavingsGoalForm, SplitForm,
                        GoalDepositForm,
                        CreateChildForm,
-                       TurnGroupForm, TurnAddMemberForm)
+                       ParentBulkCreateTaskForm,
+                       TurnGroupForm, TurnAddMemberForm,
+                       TurnSettingsForm, TurnPauseForm, TurnActionForm,
+                       TurnSkipForm, TurnSwapRequestForm, TurnSharedJoinForm,
+                       TurnNudgeForm,
+                       TurnTradeForm, TurnWeekdayRuleForm, TurnCalSettingsForm)
 from flask_login import login_user, current_user, logout_user, login_required
 from app.taskManagement import (create_task, get_tasks_for_date, update_task,
                                 delete_task, toggle_task_for_date, recurrence_label)
 from app.pointsys import total_task_points
 from app.models import (User, Task, GoodAction, BadAction, Reward, Punishment,
-                        TurnGroup, TurnGroupMember, TurnDailyUsage, TurnDayState)
+                        TurnGroup, TurnGroupMember, TurnDailyUsage, TurnDayState,
+                        TurnSwapRequest, TurnWeekdayRule, TurnAuditLog)
+from app.turn import (
+    turn_day_key,
+    get_or_init_turn_state,
+    queue_for_group,
+    auto_advance_interval_seconds,
+    advance_turn,
+    skip_turn,
+    request_swap,
+    resolve_swap,
+    join_shared_turn,
+    nudge_current_child,
+    execute_point_trade,
+    calendar_owner_for_day,
+    get_audit_log,
+    get_group_members,
+    check_grace_warning,
+    start_turn_session,
+    pause_turn_session,
+    get_session_view,
+)
 import uuid
 from app.goodact import (create_good_action, get_good_actions, delete_good_action,
                          award_good_action, create_reward, get_rewards, delete_reward,
@@ -123,6 +150,139 @@ def logout():
     return redirect(url_for('login'))
 
 
+@app.route('/login/google')
+def login_google():
+    configured_uri = app.config.get('GOOGLE_REDIRECT_URI')
+    current_uri = url_for('authorize_google', _external=True)
+    redirect_uri = configured_uri if configured_uri and configured_uri.startswith(request.host_url) else current_uri
+    return oauth.google.authorize_redirect(redirect_uri)
+
+
+@app.route('/authorize/google')
+def authorize_google():
+    token = oauth.google.authorize_access_token()
+    user_info = oauth.google.get('https://www.googleapis.com/oauth2/v2/userinfo').json()
+    email = user_info.get('email')
+    name = user_info.get('name', email.split('@')[0] if email else 'Google User')
+
+    if not email:
+        flash('Google login failed: no email returned.', 'danger')
+        return redirect(url_for('login'))
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        # Create new user if not exists
+        hashed = bcrypt.generate_password_hash(uuid.uuid4().hex).decode('utf-8')
+        user = User(username=name, email=email, password=hashed, role='parent')
+        db.session.add(user)
+        db.session.commit()
+
+    login_user(user)
+    return redirect(url_for('home'))
+
+
+def _get_token_auth_user():
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header or not auth_header.lower().startswith('bearer '):
+        return None
+
+    token = auth_header.split(' ', 1)[1]
+    return User.verify_auth_token(token)
+
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password') or ''
+
+    if not email or not password:
+        return jsonify({'success': False, 'message': 'Email and password are required.'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if user and bcrypt.check_password_hash(user.password, password):
+        token = user.get_auth_token()
+        return jsonify({
+            'success': True,
+            'token': token,
+            'role': user.role,
+            'username': user.username,
+            'email': user.email,
+        }), 200
+
+    return jsonify({'success': False, 'message': 'Invalid email or password.'}), 401
+
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    password = data.get('password') or ''
+    username = (data.get('username') or '').strip()
+
+    if not email or not password or not username:
+        return jsonify({'success': False, 'message': 'Email, password, and username are required.'}), 400
+
+    if User.query.filter_by(email=email).first():
+        return jsonify({'success': False, 'message': 'Email already exists.'}), 409
+
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    user = User(username=username, email=email, password=hashed_password, role='parent')
+    db.session.add(user)
+    db.session.commit()
+
+    token = user.get_auth_token()
+    return jsonify({
+        'success': True,
+        'token': token,
+        'role': user.role,
+        'username': user.username,
+        'email': user.email,
+    }), 201
+
+
+@app.route('/api/user')
+def api_user():
+    user = _get_token_auth_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    return jsonify({
+        'success': True,
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'role': user.role,
+            'parent_id': user.parent_id,
+        }
+    }), 200
+
+
+@app.route('/api/kids')
+def api_kids():
+    user = _get_token_auth_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    if user.role != 'parent':
+        return jsonify({'success': False, 'message': 'Only parents can view kids.'}), 403
+
+    kids = User.query.filter_by(parent_id=user.id, role='child').order_by(User.username.asc()).all()
+    return jsonify({
+        'success': True,
+        'kids': [
+            {
+                'id': kid.id,
+                'username': kid.username,
+                'email': kid.email,
+                'points': kid.points,
+            }
+            for kid in kids
+        ]
+    }), 200
+
+
 # ── HOME ──────────────────────────────────────────────────────────────────────
 
 @app.route("/home")
@@ -147,8 +307,8 @@ def parent():
     kids = User.query.filter_by(parent_id=current_user.id).all()
     selected_child_id = session.get('active_child_id')
     if form.validate_on_submit():
-        if User.query.filter_by(username=form.username.data).first():
-            flash('That username is already taken.', 'danger')
+        if User.query.filter_by(parent_id=current_user.id, role='child', username=form.username.data).first():
+            flash('That username is already taken in your family.', 'danger')
             return redirect(url_for('parent'))
         email = (form.email.data or '').strip()
         if not email:
@@ -174,6 +334,50 @@ def parent():
     return render_template('parent.html', kids=kids, form=form, selected_child=selected_child)
 
 
+@app.route("/parent/create_tasks", methods=["GET", "POST"])
+@login_required
+def parent_create_tasks():
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    task_form = ParentBulkCreateTaskForm()
+    kids = User.query.filter_by(parent_id=current_user.id, role='child').order_by(User.username.asc()).all()
+    task_form.child_ids.choices = [(k.id, k.username) for k in kids]
+
+    if request.method == 'GET':
+        return render_template('parent_create_tasks.html', task_form=task_form, kids=kids)
+
+    if not task_form.validate_on_submit():
+        flash('Could not create task. Please check the form.', 'danger')
+        return redirect(url_for('parent_create_tasks'))
+
+    target_ids = [k.id for k in kids] if task_form.all_kids.data else list(task_form.child_ids.data or [])
+
+    r_days = [int(d) for d in (task_form.recurrence_days.data or [])] if task_form.recurrence_type.data == 'weekly' else None
+
+    created = 0
+    for uid in target_ids:
+        create_task(
+            title=task_form.title.data,
+            description=task_form.description.data,
+            date=task_form.date.data,
+            time=task_form.time.data,
+            recurrence_type=task_form.recurrence_type.data,
+            recurrence_hours=task_form.recurrence_hours.data,
+            recurrence_interval_days=task_form.recurrence_interval_days.data,
+            recurrence_days=r_days,
+            recurrence_monthly_ordinal=task_form.recurrence_monthly_ordinal.data,
+            recurrence_monthly_weekday=task_form.recurrence_monthly_weekday.data,
+            recurrence_end=task_form.recurrence_end.data,
+            user_id=uid,
+        )
+        created += 1
+
+    flash(f'Task created for {created} kid(s)! ✅', 'success')
+    return redirect(url_for('parent_create_tasks'))
+
+
 @app.route('/parent/select/<int:child_id>')
 @login_required
 def parent_select_child(child_id):
@@ -193,122 +397,6 @@ def parent_select_child(child_id):
 
 # ── TURN MANAGEMENT (MVP) ─────────────────────────────────────────────────────
 
-def _turn_day_key():
-    return date_type.today()
-
-
-def _days_since_epoch(day: date_type) -> int:
-    epoch = date_type(1970, 1, 1)
-    return (day - epoch).days
-
-
-def _get_group_members(group: TurnGroup):
-    members = (TurnGroupMember.query
-               .filter_by(group_id=group.id)
-               .order_by(TurnGroupMember.position.asc(), TurnGroupMember.id.asc())
-               .all())
-    return members
-
-
-def _get_or_init_turn_state(group: TurnGroup, day: date_type):
-    state = TurnDayState.query.filter_by(group_id=group.id, day=day).first()
-    members = _get_group_members(group)
-    if not state:
-        start_pos = 0
-        if members:
-            start_pos = (_days_since_epoch(day) + group.id) % len(members)
-            start_pos = members[start_pos].position
-        state = TurnDayState(group_id=group.id, day=day, current_position=start_pos)
-        db.session.add(state)
-        db.session.commit()
-    return state
-
-
-def _get_usage_minutes(group_id: int, child_id: int, day: date_type) -> int:
-    usage = TurnDailyUsage.query.filter_by(group_id=group_id, child_id=child_id, day=day).first()
-    return usage.used_min if usage else 0
-
-
-def _ensure_usage_row(group_id: int, child_id: int, day: date_type):
-    usage = TurnDailyUsage.query.filter_by(group_id=group_id, child_id=child_id, day=day).first()
-    if not usage:
-        usage = TurnDailyUsage(group_id=group_id, child_id=child_id, day=day, used_min=0)
-        db.session.add(usage)
-        db.session.commit()
-    return usage
-
-
-def _eligible_member_ids(group: TurnGroup, day: date_type):
-    members = _get_group_members(group)
-    eligible = []
-    for m in members:
-        used = _get_usage_minutes(group.id, m.child_id, day)
-        if used < group.daily_quota_min:
-            eligible.append(m.child_id)
-    return eligible
-
-
-def _queue_for_group(group: TurnGroup, day: date_type):
-    members = _get_group_members(group)
-    if not members:
-        return None
-
-    state = _get_or_init_turn_state(group, day)
-    eligible_ids = set(_eligible_member_ids(group, day))
-    if not eligible_ids:
-        return {
-            'now': None,
-            'next': None,
-            'queue': [],
-            'state': state,
-        }
-
-    # Find the current member by position, otherwise pick first eligible in order
-    ordered = members
-    # rotate list to start at current_position
-    start_index = 0
-    for i, m in enumerate(ordered):
-        if m.position == state.current_position:
-            start_index = i
-            break
-    rotated = ordered[start_index:] + ordered[:start_index]
-
-    # pick first eligible as NOW
-    now_member = next((m for m in rotated if m.child_id in eligible_ids), None)
-    if not now_member:
-        return {
-            'now': None,
-            'next': None,
-            'queue': [],
-            'state': state,
-        }
-
-    # build queue starting from NOW
-    now_index = rotated.index(now_member)
-    rotated_from_now = rotated[now_index:] + rotated[:now_index]
-    queue_members = [m for m in rotated_from_now if m.child_id in eligible_ids]
-
-    now_child = User.query.get(now_member.child_id)
-    next_child = User.query.get(queue_members[1].child_id) if len(queue_members) > 1 else None
-
-    queue = []
-    for m in queue_members:
-        child = User.query.get(m.child_id)
-        used = _get_usage_minutes(group.id, m.child_id, day)
-        remaining = max(group.daily_quota_min - used, 0)
-        queue.append({
-            'child': child,
-            'used_min': used,
-            'remaining_min': remaining,
-        })
-
-    return {
-        'now': now_child,
-        'next': next_child,
-        'queue': queue,
-        'state': state,
-    }
-
 
 @app.route("/turns", methods=["GET", "POST"])
 @login_required
@@ -317,15 +405,17 @@ def turns():
         flash('Parents only page.', 'danger')
         return redirect(url_for('home'))
 
-    day = _turn_day_key()
+    day = turn_day_key()
     group_form = TurnGroupForm()
 
     if group_form.validate_on_submit():
+        category = (request.form.get('category') or 'clock').strip().lower()
         group = TurnGroup(
             parent_id=current_user.id,
             name=group_form.name.data,
-            turn_duration_min=group_form.turn_duration_min.data,
-            daily_quota_min=group_form.daily_quota_min.data,
+            category=category,
+            turn_duration_min=group_form.turn_duration_min.data or 30,
+            daily_quota_min=group_form.daily_quota_min.data or 180,
         )
         db.session.add(group)
         db.session.commit()
@@ -338,6 +428,28 @@ def turns():
     selected_group = None
     add_member_form = None
     queue_data = None
+    session_view = None
+
+    # Calendar view context
+    cal_owner = None
+    weekday_rules = []
+    cal_month_weeks = None
+    cal_month_legend = None
+    cal_month_label = None
+
+    # Actions/log context
+    pending_swaps = []
+    audit_log = []
+
+    start_form = None
+    next_form = None
+    skip_form = None
+    swap_form = None
+    join_form = None
+    nudge_form = None
+    trade_form = None
+    cal_form = None
+    wd_form = None
 
     if selected_group_id:
         selected_group = TurnGroup.query.filter_by(id=selected_group_id, parent_id=current_user.id).first()
@@ -351,7 +463,125 @@ def turns():
             choices = [(0, 'All kids already added')]
         add_member_form.child_id.choices = choices
 
-        queue_data = _queue_for_group(selected_group, day)
+        category = (selected_group.category or 'clock').lower()
+        if category == 'calendar':
+            cal_owner = calendar_owner_for_day(selected_group, day)
+            weekday_rules = TurnWeekdayRule.query.filter_by(group_id=selected_group.id).all()
+
+            # Month ownership view (visual calendar)
+            members = get_group_members(selected_group)
+            member_ids = [m.child_id for m in members]
+            users_by_id = {}
+            if member_ids:
+                users = User.query.filter(User.id.in_(member_ids)).all()
+                users_by_id = {u.id: u for u in users}
+
+            palette = ['--mint', '--peach', '--lavender', '--sun', '--sky', '--grass', '--coral']
+            color_by_child = {cid: palette[i % len(palette)] for i, cid in enumerate(member_ids)}
+
+            rules_by_weekday = {r.weekday: r.child_id for r in weekday_rules}
+
+            def _days_since_epoch(d: date_type) -> int:
+                return (d - date_type(1970, 1, 1)).days
+
+            year, month = day.year, day.month
+            cal_month_label = f"{pycal.month_name[month]} {year}"
+            cal = pycal.Calendar(firstweekday=0)  # Monday
+            weeks = []
+            for week in cal.monthdatescalendar(year, month):
+                cells = []
+                for d in week:
+                    in_month = d.month == month
+                    owner_id = None
+                    if in_month and not bool(selected_group.cal_paused) and members:
+                        mode = (selected_group.cal_mode or 'n_day')
+                        if mode == 'weekday':
+                            owner_id = rules_by_weekday.get(d.weekday())
+                        elif mode == 'n_day':
+                            n = int(selected_group.cal_n_days or 1)
+                            idx = (_days_since_epoch(d) // max(n, 1)) % len(members)
+                            owner_id = members[idx].child_id
+                        elif mode == 'cyclical':
+                            day_of_year = d.timetuple().tm_yday
+                            idx = day_of_year % len(members)
+                            owner_id = members[idx].child_id
+
+                    owner = users_by_id.get(owner_id) if owner_id else None
+                    cells.append({
+                        'date': d,
+                        'in_month': in_month,
+                        'owner': owner,
+                        'color_var': color_by_child.get(owner_id),
+                        'is_today': d == day,
+                    })
+                weeks.append(cells)
+            cal_month_weeks = weeks
+
+            cal_month_legend = []
+            for cid in member_ids:
+                u = users_by_id.get(cid)
+                if u:
+                    cal_month_legend.append({'child': u, 'color_var': color_by_child.get(cid)})
+        else:
+            queue_data = queue_for_group(selected_group, day)
+
+        session_view = get_session_view(selected_group, day) if category == 'clock' else None
+
+        pending_swaps = TurnSwapRequest.query.filter_by(
+            group_id=selected_group.id, day=day, status='pending'
+        ).all()
+        audit_log = get_audit_log(selected_group.id, day=day, limit=30)
+
+        start_form = TurnActionForm()
+        next_form = TurnActionForm()
+
+        # Actions/forms
+        all_kid_choices = [(k.id, k.username) for k in kids]
+        members = get_group_members(selected_group)
+        member_choices = [(m.child_id, (User.query.get(m.child_id).username if User.query.get(m.child_id) else str(m.child_id))) for m in members]
+
+        skip_form = TurnSkipForm()
+        skip_form.child_id.choices = member_choices or all_kid_choices
+
+        swap_form = TurnSwapRequestForm()
+        swap_form.requester_id.choices = all_kid_choices
+        swap_form.target_id.choices = all_kid_choices
+
+        join_form = TurnSharedJoinForm()
+        join_form.child_id.choices = all_kid_choices
+
+        nudge_form = TurnNudgeForm()
+
+        trade_form = TurnTradeForm()
+        trade_form.giver_id.choices = all_kid_choices
+        trade_form.receiver_id.choices = all_kid_choices
+
+        cal_form = TurnCalSettingsForm()
+        cal_form.cal_mode.data = selected_group.cal_mode
+        cal_form.cal_n_days.data = selected_group.cal_n_days
+        cal_form.cal_paused.data = bool(selected_group.cal_paused)
+
+        wd_form = TurnWeekdayRuleForm()
+        wd_form.child_id.choices = all_kid_choices
+
+        settings_form = TurnSettingsForm()
+        settings_form.selection_mode.data = selected_group.selection_mode
+        settings_form.auto_advance_enabled.data = bool(selected_group.auto_advance_enabled)
+        settings_form.auto_advance_value.data = selected_group.auto_advance_value
+        settings_form.auto_advance_unit.data = selected_group.auto_advance_unit
+        settings_form.grace_period_sec.data = selected_group.grace_period_sec
+        settings_form.deduct_overrun.data = bool(selected_group.deduct_overrun)
+
+        pause_form = TurnPauseForm()
+        pause_form.submit.label.text = 'Resume' if selected_group.auto_advance_paused else 'Pause'
+        auto_seconds = auto_advance_interval_seconds(selected_group)
+    else:
+        settings_form = None
+        pause_form = None
+        auto_seconds = None
+        session_view = None
+        start_form = None
+        next_form = None
 
     return render_template(
         'turns.html',
@@ -359,9 +589,52 @@ def turns():
         selected_group=selected_group,
         group_form=group_form,
         add_member_form=add_member_form,
+        settings_form=settings_form,
+        pause_form=pause_form,
+        start_form=start_form,
+        next_form=next_form,
+        session_view=session_view,
         queue_data=queue_data,
         day=day,
+        auto_seconds=auto_seconds,
+        cal_owner=cal_owner,
+        weekday_rules=weekday_rules,
+        cal_month_weeks=cal_month_weeks,
+        cal_month_legend=cal_month_legend,
+        cal_month_label=cal_month_label,
+        pending_swaps=pending_swaps,
+        audit_log=audit_log,
+        skip_form=skip_form,
+        swap_form=swap_form,
+        join_form=join_form,
+        nudge_form=nudge_form,
+        trade_form=trade_form,
+        cal_form=cal_form,
+        wd_form=wd_form,
     )
+
+
+@app.route("/turns/<int:group_id>/start", methods=["POST"])
+@login_required
+def turns_start(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnActionForm()
+    day = turn_day_key()
+    if not form.validate_on_submit():
+        flash('Could not start.', 'danger')
+        return redirect(url_for('turns', group_id=group.id))
+
+    result = start_turn_session(group, day, actor_id=current_user.id)
+    flash(result.message, 'success' if result.ok else 'warning')
+    return redirect(url_for('turns', group_id=group.id))
 
 
 @app.route("/turns/<int:group_id>/add_member", methods=["POST"])
@@ -392,12 +665,97 @@ def turns_add_member(group_id):
         db.session.commit()
 
         # ensure today's state exists and is stable
-        _get_or_init_turn_state(group, _turn_day_key())
+        get_or_init_turn_state(group, turn_day_key())
 
         flash('Child added to turn group.', 'success')
     else:
         flash('Could not add child.', 'danger')
 
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/settings", methods=["POST"])
+@login_required
+def turns_settings(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnSettingsForm()
+    if form.validate_on_submit():
+        new_mode = form.selection_mode.data
+        group.selection_mode = new_mode
+        group.auto_advance_enabled = bool(form.auto_advance_enabled.data)
+
+        value = form.auto_advance_value.data
+        unit = (form.auto_advance_unit.data or 'minutes').lower()
+
+        if group.auto_advance_enabled:
+            if value is None or value <= 0:
+                flash('Auto next turn needs a time value.', 'warning')
+                return redirect(url_for('turns', group_id=group.id))
+            group.auto_advance_value = int(value)
+            group.auto_advance_unit = unit
+        else:
+            group.auto_advance_value = None
+            group.auto_advance_unit = unit
+            group.auto_advance_paused = False
+
+        db.session.commit()
+
+        # New upgraded clock settings
+        group.grace_period_sec = int(form.grace_period_sec.data or 120)
+        group.deduct_overrun = bool(form.deduct_overrun.data)
+        db.session.commit()
+
+        # If user switches to Random during the day, apply wheel immediately once.
+        if (new_mode or '').lower() == 'random':
+            day = turn_day_key()
+            state = get_or_init_turn_state(group, day)
+            if not getattr(state, 'wheel_used', False):
+                # re-init by forcing a random starter via get_or_init_turn_state logic
+                # simplest: delete state row and recreate
+                try:
+                    db.session.delete(state)
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                get_or_init_turn_state(group, day)
+
+        flash('Turn settings saved.', 'success')
+    else:
+        flash('Could not save settings.', 'danger')
+
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/pause", methods=["POST"])
+@login_required
+def turns_pause(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnPauseForm()
+    if form.validate_on_submit():
+        day = turn_day_key()
+        result, reached = pause_turn_session(group, day, actor_id=current_user.id)
+        flash(result.message, 'success' if result.ok else 'warning')
+
+        if reached:
+            # Time is up for the active turn: advance automatically
+            next_result = advance_turn(group, day, actor_id=current_user.id)
+            flash(next_result.message, 'success' if next_result.ok else 'warning')
     return redirect(url_for('turns', group_id=group.id))
 
 
@@ -413,39 +771,271 @@ def turns_next(group_id):
         flash('Turn group not found.', 'danger')
         return redirect(url_for('turns'))
 
-    day = _turn_day_key()
-    queue_data = _queue_for_group(group, day)
-    if not queue_data or not queue_data['now']:
-        flash('No active turn right now.', 'warning')
+    form = TurnActionForm()
+    if not form.validate_on_submit():
+        flash('Could not advance turn.', 'danger')
         return redirect(url_for('turns', group_id=group.id))
 
-    now_child = queue_data['now']
-    usage = _ensure_usage_row(group.id, now_child.id, day)
-    remaining = max(group.daily_quota_min - usage.used_min, 0)
-
-    consume = min(group.turn_duration_min, remaining)
-    usage.used_min += consume
-    db.session.commit()
-
-    # advance state to the next member position after the current child
-    members = _get_group_members(group)
-    if not members:
-        return redirect(url_for('turns', group_id=group.id))
-
-    state = _get_or_init_turn_state(group, day)
-    # find the member object for now_child
-    now_member = next((m for m in members if m.child_id == now_child.id), None)
-    if now_member is None:
-        return redirect(url_for('turns', group_id=group.id))
-
-    ordered = members
-    now_index = ordered.index(now_member)
-    next_member = ordered[(now_index + 1) % len(ordered)]
-    state.current_position = next_member.position
-    db.session.commit()
-
-    flash('Next turn!', 'success')
+    day = turn_day_key()
+    result = advance_turn(group, day, actor_id=current_user.id)
+    flash(result.message, 'success' if result.ok else 'warning')
     return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/skip", methods=["POST"])
+@login_required
+def turns_skip(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnSkipForm()
+    members = get_group_members(group)
+    form.child_id.choices = [(m.child_id, (User.query.get(m.child_id).username if User.query.get(m.child_id) else str(m.child_id))) for m in members]
+    if form.validate_on_submit():
+        result = skip_turn(group, turn_day_key(), child_id=form.child_id.data, actor_id=current_user.id)
+        flash(result.message, 'success' if result.ok else 'warning')
+    else:
+        flash('Could not skip.', 'danger')
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/swap_request", methods=["POST"])
+@login_required
+def turns_swap_request(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnSwapRequestForm()
+    kids = User.query.filter_by(parent_id=current_user.id, role='child').order_by(User.username.asc()).all()
+    choices = [(k.id, k.username) for k in kids]
+    form.requester_id.choices = choices
+    form.target_id.choices = choices
+    if form.validate_on_submit():
+        result = request_swap(group, turn_day_key(), requester_id=form.requester_id.data, target_id=form.target_id.data)
+        flash(result.message, 'success' if result.ok else 'warning')
+    else:
+        flash('Could not request swap.', 'danger')
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/swap_resolve/<int:swap_id>", methods=["POST"])
+@login_required
+def turns_swap_resolve(group_id, swap_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    accepted = request.form.get('accepted') == '1'
+    result = resolve_swap(group, turn_day_key(), swap_id=swap_id, accepted=accepted,
+                          actor_id=current_user.id, parent_override=True)
+    flash(result.message, 'success' if result.ok else 'warning')
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/join_shared", methods=["POST"])
+@login_required
+def turns_join_shared(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnSharedJoinForm()
+    kids = User.query.filter_by(parent_id=current_user.id, role='child').order_by(User.username.asc()).all()
+    form.child_id.choices = [(k.id, k.username) for k in kids]
+    if form.validate_on_submit():
+        result = join_shared_turn(group, turn_day_key(), joining_child_id=form.child_id.data, actor_id=current_user.id)
+        flash(result.message, 'success' if result.ok else 'warning')
+    else:
+        flash('Could not join shared turn.', 'danger')
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/nudge", methods=["POST"])
+@login_required
+def turns_nudge(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    result = nudge_current_child(group, turn_day_key(), nudger_id=current_user.id)
+    flash(result.message, 'success' if result.ok else 'info')
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/trade", methods=["POST"])
+@login_required
+def turns_trade(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnTradeForm()
+    kids = User.query.filter_by(parent_id=current_user.id, role='child').order_by(User.username.asc()).all()
+    choices = [(k.id, k.username) for k in kids]
+    form.giver_id.choices = choices
+    form.receiver_id.choices = choices
+    if form.validate_on_submit():
+        result = execute_point_trade(group, turn_day_key(), giver_id=form.giver_id.data,
+                                     receiver_id=form.receiver_id.data, points=form.points.data,
+                                     actor_id=current_user.id)
+        flash(result.message, 'success' if result.ok else 'warning')
+    else:
+        flash('Could not trade points.', 'danger')
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/cal_settings", methods=["POST"])
+@login_required
+def turns_cal_settings(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnCalSettingsForm()
+    if form.validate_on_submit():
+        group.cal_mode = form.cal_mode.data
+        group.cal_n_days = int(form.cal_n_days.data or 1)
+        group.cal_paused = bool(form.cal_paused.data)
+        db.session.commit()
+        flash('Calendar settings saved.', 'success')
+    else:
+        flash('Could not save calendar settings.', 'danger')
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/weekday_rule", methods=["POST"])
+@login_required
+def turns_weekday_rule(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    form = TurnWeekdayRuleForm()
+    kids = User.query.filter_by(parent_id=current_user.id, role='child').order_by(User.username.asc()).all()
+    form.child_id.choices = [(k.id, k.username) for k in kids]
+    if form.validate_on_submit():
+        rule = TurnWeekdayRule.query.filter_by(group_id=group.id, weekday=form.weekday.data).first()
+        if rule:
+            rule.child_id = form.child_id.data
+        else:
+            db.session.add(TurnWeekdayRule(group_id=group.id, weekday=form.weekday.data, child_id=form.child_id.data))
+        db.session.commit()
+        flash('Weekday rule saved.', 'success')
+    else:
+        flash('Could not save weekday rule.', 'danger')
+    return redirect(url_for('turns', group_id=group.id))
+
+
+@app.route("/turns/<int:group_id>/grace_check", methods=["GET"])
+@login_required
+def turns_grace_check(group_id):
+    if current_user.role != 'parent':
+        return jsonify({'error': 'forbidden'}), 403
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        return jsonify({'error': 'not found'}), 404
+
+    fired = check_grace_warning(group, turn_day_key())
+    return jsonify({'grace_fired': bool(fired)})
+
+
+@app.route("/turns/<int:group_id>/history")
+@login_required
+def turns_history(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    day_str = request.args.get('day')
+    day_val = None
+    if day_str:
+        try:
+            day_val = date_type.fromisoformat(day_str)
+        except ValueError:
+            day_val = None
+
+    logs = get_audit_log(group.id, day=day_val, limit=200)
+    return render_template('turns_history.html', group=group, logs=logs, day=day_val)
+
+
+@app.route("/turns/<int:group_id>/delete", methods=["POST"])
+@login_required
+def turns_delete_group(group_id):
+    if current_user.role != 'parent':
+        flash('Parents only page.', 'danger')
+        return redirect(url_for('home'))
+
+    group = TurnGroup.query.filter_by(id=group_id, parent_id=current_user.id).first()
+    if not group:
+        flash('Turn group not found.', 'danger')
+        return redirect(url_for('turns'))
+
+    try:
+        # Delete dependent rows explicitly (TurnGroup only cascades members).
+        TurnWeekdayRule.query.filter_by(group_id=group.id).delete(synchronize_session=False)
+        TurnSwapRequest.query.filter_by(group_id=group.id).delete(synchronize_session=False)
+        TurnAuditLog.query.filter_by(group_id=group.id).delete(synchronize_session=False)
+        TurnDailyUsage.query.filter_by(group_id=group.id).delete(synchronize_session=False)
+        TurnDayState.query.filter_by(group_id=group.id).delete(synchronize_session=False)
+        TurnGroupMember.query.filter_by(group_id=group.id).delete(synchronize_session=False)
+
+        db.session.delete(group)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        flash('Could not delete group. Try again.', 'danger')
+        return redirect(url_for('turns', group_id=group.id))
+
+    flash('Turn group deleted.', 'success')
+    return redirect(url_for('turns'))
 
 
 # ── CREATE TASK (with image) ──────────────────────────────────────────────────
@@ -475,7 +1065,10 @@ def createtask():
             time=form.time.data,
             recurrence_type=form.recurrence_type.data,
             recurrence_hours=form.recurrence_hours.data,
+            recurrence_interval_days=form.recurrence_interval_days.data,
             recurrence_days=r_days,
+            recurrence_monthly_ordinal=form.recurrence_monthly_ordinal.data,
+            recurrence_monthly_weekday=form.recurrence_monthly_weekday.data,
             recurrence_end=form.recurrence_end.data,
             user_id=target_user.id,
         )
@@ -558,7 +1151,10 @@ def updatetask(task_id):
             completion_status=form.completion_status.data,
             recurrence_type=form.recurrence_type.data,
             recurrence_hours=form.recurrence_hours.data,
+            recurrence_interval_days=form.recurrence_interval_days.data,
             recurrence_days=r_days,
+            recurrence_monthly_ordinal=form.recurrence_monthly_ordinal.data,
+            recurrence_monthly_weekday=form.recurrence_monthly_weekday.data,
             recurrence_end=form.recurrence_end.data,
             user_id=target_user.id,
         )
@@ -572,7 +1168,12 @@ def updatetask(task_id):
     form.completion_status.data = task.completion_status
     form.recurrence_type.data   = task.recurrence_type
     form.recurrence_hours.data  = task.recurrence_hours
+    form.recurrence_interval_days.data = task.recurrence_interval_days
     form.recurrence_days.data   = [str(d) for d in task.recurrence_days_list()]
+    if task.recurrence_monthly_ordinal is not None:
+        form.recurrence_monthly_ordinal.data = str(task.recurrence_monthly_ordinal)
+    if task.recurrence_monthly_weekday is not None:
+        form.recurrence_monthly_weekday.data = str(task.recurrence_monthly_weekday)
     if task.recurrence_end:
         form.recurrence_end.data = task.recurrence_end.date() \
             if hasattr(task.recurrence_end, 'date') else task.recurrence_end
@@ -851,7 +1452,7 @@ def create_badaction():
                           name=form.name.data,
                           crosses_value=form.crosses_value.data,
                           description=form.description.data)
-        flash(f'Bad action "{form.name.data}" added.', 'warning')
+        flash(f'Negative action "{form.name.data}" added.', 'warning')
     return redirect(url_for('badactions'))
 
 
@@ -910,7 +1511,7 @@ def assign_badaction(action_id):
 @login_required
 def create_punishment_route():
     if current_user.role != 'parent':
-        flash('Only parents can create punishments.', 'danger')
+        flash('Only parents can create consequences.', 'danger')
         return redirect(url_for('badactions'))
 
     form = PunishmentForm()
@@ -920,7 +1521,7 @@ def create_punishment_route():
                           crosses_threshold=form.crosses_threshold.data,
                           description=form.description.data,
                           crosses_cost=form.crosses_cost.data)
-        flash(f'Punishment "{form.name.data}" added.', 'warning')
+        flash(f'Consequence "{form.name.data}" added.', 'warning')
     return redirect(url_for('badactions'))
 
 
@@ -941,7 +1542,7 @@ def serve_punishment_route(punishment_id):
 @login_required
 def delete_punishment_route(punishment_id):
     if current_user.role != 'parent':
-        flash('Only parents can delete punishments.', 'danger')
+        flash('Only parents can delete consequences.', 'danger')
         return redirect(url_for('badactions'))
 
     delete_punishment(punishment_id, current_user.id)

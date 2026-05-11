@@ -1,0 +1,26 @@
+<!--
+  ADD THIS inside taskList.html, right after the "+ New Task" button line:
+
+  <a href="{{ url_for('createtask') }}" class="btn btn-success mb-3">+ New Task</a>
+
+  ↓ ADD THIS ↓
+-->
+
+<a href="{{ url_for('print_task_sheet', date=viewed_date.strftime('%Y-%m-%d')) }}"
+   class="btn btn-primary mb-3"
+   style="background: var(--lavender);">
+  🖨️ Print Sheet
+</a>
+
+<a href="{{ url_for('scan_sheet') }}"
+   class="btn mb-3"
+   style="background: var(--mint); border: var(--border); box-shadow: var(--shadow); font-weight:800;">
+  📷 Scan Sheet
+</a>
+
+<!--
+  ALSO add "Scan" to the navbar in taskList.html (and home.html / other pages):
+  Inside the <div class="navbar-nav mr-auto"> block, add:
+
+  <a class="nav-item" href="{{ url_for('scan_sheet') }}">📷 Scan</a>
+-->
