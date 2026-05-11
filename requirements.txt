@@ -16,3 +16,4 @@ pyzbar>=0.1.8
 reportlab>=3.6.14
 arabic-reshaper==3.0.0
 python-bidi==0.4.2
+flask-cors==5.0.0
